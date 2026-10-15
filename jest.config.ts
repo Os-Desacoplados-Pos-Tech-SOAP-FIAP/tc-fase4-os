@@ -39,6 +39,12 @@ const config: Config = {
       testRegex: 'test/e2e/.*\\.e2e-spec\\.ts$',
       globalSetup: '<rootDir>/test/global-setup.ts',
     },
+    {
+      ...base,
+      displayName: 'bdd',
+      testRegex: 'test/bdd/.*\\.steps\\.ts$',
+      globalSetup: '<rootDir>/test/global-setup.ts',
+    },
   ],
 };
 
