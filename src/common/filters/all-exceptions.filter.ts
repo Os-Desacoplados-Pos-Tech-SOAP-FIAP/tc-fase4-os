@@ -1,7 +1,12 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { Response } from 'express';
 
-import { ConflitoError, RecursoNaoEncontradoError } from '../../application/errors';
+import {
+  CatalogoIndisponivelError,
+  ConflitoError,
+  CredenciaisInvalidasError,
+  RecursoNaoEncontradoError,
+} from '../../application/errors';
 import { DomainError } from '../../domain/shared/DomainError';
 
 interface ErroComCode {
@@ -29,6 +34,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof ConflitoError) {
       this.responderComCode(response, 409, 'Conflict', exception);
+      return;
+    }
+
+    if (exception instanceof CredenciaisInvalidasError) {
+      this.responderComCode(response, 401, 'Unauthorized', exception);
+      return;
+    }
+
+    if (exception instanceof CatalogoIndisponivelError) {
+      this.responderComCode(response, 503, 'Service Unavailable', exception);
       return;
     }
 

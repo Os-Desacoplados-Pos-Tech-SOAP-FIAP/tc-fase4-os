@@ -33,3 +33,25 @@ export class ConcorrenciaError extends ConflitoError {
     Object.setPrototypeOf(this, ConcorrenciaError.prototype);
   }
 }
+
+/** Catalog fora do ar, lento ou respondendo fora do contrato. HTTP → 503. */
+export class CatalogoIndisponivelError extends Error {
+  public readonly code = 'CATALOGO_INDISPONIVEL';
+
+  constructor(motivo: string) {
+    super(`Catalog indisponível: ${motivo}`);
+    this.name = 'CatalogoIndisponivelError';
+    Object.setPrototypeOf(this, CatalogoIndisponivelError.prototype);
+  }
+}
+
+/** E-mail inexistente, senha errada ou usuário inativo: mesma resposta (HTTP → 401). */
+export class CredenciaisInvalidasError extends Error {
+  public readonly code = 'CREDENCIAIS_INVALIDAS';
+
+  constructor() {
+    super('Credenciais inválidas');
+    this.name = 'CredenciaisInvalidasError';
+    Object.setPrototypeOf(this, CredenciaisInvalidasError.prototype);
+  }
+}

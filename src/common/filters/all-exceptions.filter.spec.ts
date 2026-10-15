@@ -1,6 +1,11 @@
 import { ArgumentsHost, BadRequestException, HttpException, Logger } from '@nestjs/common';
 
-import { ConflitoError, RecursoNaoEncontradoError } from '../../application/errors';
+import {
+  CatalogoIndisponivelError,
+  ConflitoError,
+  CredenciaisInvalidasError,
+  RecursoNaoEncontradoError,
+} from '../../application/errors';
 import { DomainError } from '../../domain/shared/DomainError';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -49,6 +54,30 @@ describe('AllExceptionsFilter', () => {
       error: 'Conflict',
       code: 'CODIGO_DUPLICADO',
       message: 'Já existe',
+    });
+  });
+
+  it('CatalogoIndisponivelError vira 503 com code', () => {
+    const { host, response } = criarHost();
+    filtro.catch(new CatalogoIndisponivelError('timeout'), host);
+    expect(response.status).toHaveBeenCalledWith(503);
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      code: 'CATALOGO_INDISPONIVEL',
+      message: 'Catalog indisponível: timeout',
+    });
+  });
+
+  it('CredenciaisInvalidasError vira 401 com code', () => {
+    const { host, response } = criarHost();
+    filtro.catch(new CredenciaisInvalidasError(), host);
+    expect(response.status).toHaveBeenCalledWith(401);
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 401,
+      error: 'Unauthorized',
+      code: 'CREDENCIAIS_INVALIDAS',
+      message: 'Credenciais inválidas',
     });
   });
 

@@ -1,5 +1,11 @@
 import { DomainError } from '../domain/shared/DomainError';
-import { ConcorrenciaError, ConflitoError, RecursoNaoEncontradoError } from './errors';
+import {
+  CatalogoIndisponivelError,
+  ConcorrenciaError,
+  ConflitoError,
+  CredenciaisInvalidasError,
+  RecursoNaoEncontradoError,
+} from './errors';
 
 describe('erros de aplicação', () => {
   it('RecursoNaoEncontradoError monta a mensagem a partir da entidade', () => {
@@ -28,5 +34,18 @@ describe('erros de aplicação', () => {
     expect(erro).toBeInstanceOf(ConflitoError);
     expect(erro.code).toBe('CONCORRENCIA');
     expect(erro.message).toContain('Ordem de serviço');
+  });
+
+  it('CatalogoIndisponivelError carrega code e motivo', () => {
+    const erro = new CatalogoIndisponivelError('timeout');
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.code).toBe('CATALOGO_INDISPONIVEL');
+    expect(erro.message).toBe('Catalog indisponível: timeout');
+  });
+
+  it('CredenciaisInvalidasError tem mensagem genérica', () => {
+    const erro = new CredenciaisInvalidasError();
+    expect(erro.code).toBe('CREDENCIAIS_INVALIDAS');
+    expect(erro.message).toBe('Credenciais inválidas');
   });
 });
