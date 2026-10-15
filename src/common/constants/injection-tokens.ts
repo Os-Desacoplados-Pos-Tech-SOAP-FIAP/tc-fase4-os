@@ -11,5 +11,4 @@ export const INJECTION_TOKENS = {
   HASH_PROVIDER: Symbol('IHashProvider'),
   CATALOGO: Symbol('ICatalogo'),
   DESTINOS_COMANDOS: Symbol('DestinosComandos'),
-  RELOGIO: Symbol('IRelogio'),
 } as const;

@@ -1,4 +1,5 @@
 const OBRIGATORIAS = ['DATABASE_URL', 'JWT_SECRET', 'INTERNAL_SERVICE_TOKEN', 'CATALOG_BASE_URL'];
+const TAMANHO_MINIMO_TOKEN_INTERNO = 16;
 const OBRIGATORIAS_MENSAGERIA = [
   'INBOX_QUEUE_URL',
   'CATALOG_COMMANDS_QUEUE_URL',
@@ -31,5 +32,11 @@ export function validarAmbiente(config: Record<string, unknown>): Record<string,
       : [...OBRIGATORIAS, ...OBRIGATORIAS_MENSAGERIA],
   );
   exigirInteiro(config, 'CATALOG_TIMEOUT_MS', 1);
+  // Segredo compartilhado com a Lambda: curto demais é adivinhável.
+  if (String(config.INTERNAL_SERVICE_TOKEN).length < TAMANHO_MINIMO_TOKEN_INTERNO) {
+    throw new Error(
+      `INTERNAL_SERVICE_TOKEN deve ter ao menos ${TAMANHO_MINIMO_TOKEN_INTERNO} caracteres`,
+    );
+  }
   return config;
 }

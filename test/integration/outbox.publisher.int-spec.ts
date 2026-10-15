@@ -65,7 +65,7 @@ describe('OutboxPublisher (integração)', () => {
     const b1 = await registrar('t.b1', 'os-2');
     const a2 = await registrar('t.a2', 'os-1');
     enviar.mockImplementationOnce(async () => {
-      throw new Error('sns fora');
+      throw new Error('sqs fora');
     });
     const logErro = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     let log: unknown;
@@ -82,9 +82,9 @@ describe('OutboxPublisher (integração)', () => {
       messageId: a1.messageId,
       type: 't.a1',
       osId: 'os-1',
-      err: { message: 'sns fora', name: 'Error' },
+      err: { message: 'sqs fora', name: 'Error' },
     });
-    expect(await linha(a1)).toMatchObject({ publicadoEm: null, tentativas: 1, ultimoErro: 'sns fora' });
+    expect(await linha(a1)).toMatchObject({ publicadoEm: null, tentativas: 1, ultimoErro: 'sqs fora' });
     expect(await linha(a2)).toMatchObject({ publicadoEm: null, tentativas: 0, ultimoErro: null });
     expect((await linha(b1)).publicadoEm).not.toBeNull();
 

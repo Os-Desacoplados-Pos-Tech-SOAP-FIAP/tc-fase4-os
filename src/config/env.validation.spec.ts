@@ -3,7 +3,7 @@ import { validarAmbiente } from './env.validation';
 const BASE = {
   DATABASE_URL: 'postgresql://x',
   JWT_SECRET: 's',
-  INTERNAL_SERVICE_TOKEN: 'interno',
+  INTERNAL_SERVICE_TOKEN: 'token-interno-de-teste',
   CATALOG_BASE_URL: 'http://localhost:3002/api/catalog',
   MESSAGING_ENABLED: 'false',
 };
@@ -29,5 +29,11 @@ describe('validarAmbiente', () => {
     expect(() => validarAmbiente({ ...BASE, CATALOG_TIMEOUT_MS: '0' })).toThrow('CATALOG_TIMEOUT_MS');
     expect(() => validarAmbiente({ ...BASE, CATALOG_TIMEOUT_MS: 'x' })).toThrow('CATALOG_TIMEOUT_MS');
     expect(validarAmbiente({ ...BASE, CATALOG_TIMEOUT_MS: '1500' })).toBeDefined();
+  });
+
+  it('exige INTERNAL_SERVICE_TOKEN com ao menos 16 caracteres', () => {
+    expect(() => validarAmbiente({ ...BASE, INTERNAL_SERVICE_TOKEN: 'curto' })).toThrow(
+      'INTERNAL_SERVICE_TOKEN deve ter ao menos 16 caracteres',
+    );
   });
 });

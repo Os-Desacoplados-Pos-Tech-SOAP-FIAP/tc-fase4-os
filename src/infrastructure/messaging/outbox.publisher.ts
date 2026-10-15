@@ -26,7 +26,7 @@ export const OUTBOX_LOCK_KEY = 4_271_001;
 
 /**
  * Passado esse tempo no ciclo, não começa novos envios: o resto fica para o próximo ciclo.
- * Evita que um SNS lento estoure o timeout da transação e desfaça o ciclo inteiro.
+ * Evita que um envio lento (SQS) estoure o timeout da transação e desfaça o ciclo inteiro.
  */
 const PRAZO_NOVOS_ENVIOS_MS = 5_000;
 
