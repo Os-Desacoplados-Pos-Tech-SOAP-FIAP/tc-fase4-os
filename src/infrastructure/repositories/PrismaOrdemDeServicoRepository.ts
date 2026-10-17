@@ -20,7 +20,7 @@ import { PrismaTransactionManager } from '../database/prisma-transaction.manager
 
 type OrdemComItens = OrdemRow & { itens: ItemRow[] };
 
-const COM_ITENS = { itens: { orderBy: [{ criadoEm: 'asc' as const }, { id: 'asc' as const }] } };
+const COM_ITENS = { itens: { orderBy: { seq: 'asc' as const } } };
 
 @Injectable()
 export class PrismaOrdemDeServicoRepository implements IOrdemDeServicoRepository {

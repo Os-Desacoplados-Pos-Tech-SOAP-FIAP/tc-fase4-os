@@ -128,6 +128,8 @@ model ItemOrcamento {
   quantidade    Int
   valorUnitario Decimal           @db.Decimal(10, 2)
   criadoEm      DateTime          @default(now())
+  /// Ordem de inclusão: itens criados no mesmo milissegundo têm o mesmo `criadoEm`.
+  seq           Int               @unique @default(autoincrement())
 
   os OrdemDeServico @relation(fields: [osId], references: [id], onDelete: Cascade)
 
