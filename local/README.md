@@ -83,7 +83,8 @@ com permissão de leitura nas DLQs e nos segredos do seed.
 | Variável | Local (padrão) | EKS |
 |---|---|---|
 | `OS_URL`, `CATALOG_URL`, `EXECUTION_URL`, `BILLING_URL` | `http://localhost:300{1..4}/api/<svc>` | `<public_base_url>/api/<svc>` (output da infra) |
-| `SMOKE_TOKEN_SOURCE` | `docker` (`docker compose logs billing`) | `kubectl` (`kubectl logs -n billing deploy/billing --tail=-1`) |
+| `SMOKE_TOKEN_SOURCE` | `docker` (`docker compose logs billing`) | `kubectl` (`kubectl logs -n billing -l app.kubernetes.io/name=billing -c billing --prefix --tail=-1`) |
+| `SMOKE_KUBE_CONTEXT` | — | contexto do cluster, passado como `--context` (sem ela, vale o contexto atual) |
 | `SMOKE_DLQ_CHECK` | `docker` (`awslocal` no LocalStack) | `aws` (`aws sqs get-queue-attributes`), ou `off` para não checar |
 | `SMOKE_DLQ_URLS` | — | URLs das 4 DLQs, separadas por vírgula (output `dlq_url` de cada Terraform) |
 | `SMOKE_SENHA_ADMIN` | `admin123` | segredo `oficina-fase4/os/SEED_SENHA_ADMIN` |
@@ -97,11 +98,16 @@ segredo() { aws secretsmanager get-secret-value --secret-id "oficina-fase4/os/$1
 
 export OS_URL=$BASE/api/os CATALOG_URL=$BASE/api/catalog EXECUTION_URL=$BASE/api/execution BILLING_URL=$BASE/api/billing
 export SMOKE_TOKEN_SOURCE=kubectl SMOKE_DLQ_CHECK=aws
+export SMOKE_KUBE_CONTEXT=arn:aws:eks:us-east-1:538880133939:cluster/oficina-fase4
 export SMOKE_DLQ_URLS="$(dlq os),$(dlq catalog),$(dlq billing),$(dlq execution)"
 export SMOKE_SENHA_ADMIN="$(segredo SEED_SENHA_ADMIN)" SMOKE_SENHA_PADRAO="$(segredo SEED_SENHA_PADRAO)"
 
 for cenario in feliz a b d; do node local/smoke.mjs "$cenario" || break; done
 ```
+
+Defina sempre `SMOKE_KUBE_CONTEXT` (veja os nomes com `kubectl config get-contexts`): sem ela o smoke lê os logs do
+contexto atual do kubectl, que pode ser outro cluster. O token é procurado em todos os pods do Billing, inclusive num
+que esteja terminando; se o pod que emitiu o e-mail já tiver sido apagado, o token se perde com o log.
 
 Rode a partir de `tc-fase4-os`, com os repositórios lado a lado e o `terraform init` feito em cada um. As senhas
 ficam só no ambiente do terminal: não grave em arquivo. O cenário `c` supõe uma vaga só

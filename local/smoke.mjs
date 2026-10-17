@@ -24,6 +24,8 @@ if (CHECAGEM_DLQ === 'aws' && DLQ_URLS.length === 0) {
   console.error('✘ SMOKE_DLQ_CHECK=aws exige SMOKE_DLQ_URLS (URLs das DLQs separadas por vírgula)');
   process.exit(1);
 }
+/** Contexto do kubectl no modo kubectl; sem ele, vale o contexto atual (pode ser outro cluster). */
+const CONTEXTO_KUBE = process.env.SMOKE_KUBE_CONTEXT;
 const SENHA = {
   admin: process.env.SMOKE_SENHA_ADMIN ?? 'admin123',
   padrao: process.env.SMOKE_SENHA_PADRAO ?? 'senha123',
@@ -49,10 +51,22 @@ function compose(...args) {
   return executar('docker', ['compose', ...args], { cwd: PASTA_COMPOSE });
 }
 
-/** Log completo do billing, de onde sai o e-mail simulado com o token. */
+/**
+ * Log completo do billing, de onde sai o e-mail simulado com o token. No kubectl lê todos os pods
+ * do label (inclui um que esteja terminando) e devolve '' em falha (pod iniciando) para o `esperar`
+ * tentar de novo.
+ */
 function logsDoBilling() {
   if (ORIGEM_TOKEN === 'kubectl') {
-    return executar('kubectl', ['logs', '-n', 'billing', 'deploy/billing', '--tail=-1']);
+    const contexto = CONTEXTO_KUBE ? ['--context', CONTEXTO_KUBE] : [];
+    try {
+      return executar('kubectl', [
+        ...contexto, 'logs', '-n', 'billing', '-l', 'app.kubernetes.io/name=billing',
+        '-c', 'billing', '--prefix', '--tail=-1',
+      ], { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch {
+      return '';
+    }
   }
   return compose('logs', 'billing');
 }
@@ -241,7 +255,7 @@ async function conferirCancelamento(ctx, os, motivoTecnico, motivoCliente) {
   }
   const padrao = new RegExp(`OS #${os.numero} cancelado".*Motivo: ${motivoCliente}`);
   await esperar(
-    async () => padrao.test(compose('logs', 'billing')),
+    async () => padrao.test(logsDoBilling()),
     Boolean,
     () => `e-mail de cancelamento da OS ${os.numero} sem "Motivo: ${motivoCliente}"`,
   );
