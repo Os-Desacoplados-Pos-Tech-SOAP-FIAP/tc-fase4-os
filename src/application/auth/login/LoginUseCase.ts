@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { PerfilAcesso } from '../../../common/auth/perfil';
 import { INJECTION_TOKENS } from '../../../common/constants/injection-tokens';
+import { Usuario } from '../../../domain/auth/entities/Usuario';
 import { IUsuarioRepository } from '../../../domain/auth/repositories/IUsuarioRepository';
 import { CredenciaisInvalidasError } from '../../errors';
 import { IHashProvider } from '../../ports/hash-provider';
@@ -32,7 +33,7 @@ export class LoginUseCase {
   ) {}
 
   async execute(email: string, senha: string): Promise<LoginResult> {
-    const usuario = await this.usuarios.buscarPorEmail(email);
+    const usuario = await this.usuarios.buscarPorEmail(Usuario.normalizarEmail(email));
     const podeEntrar = usuario?.ativo === true;
     // Compara sempre (com o hash de mentira se preciso) para o tempo não revelar se o e-mail existe.
     const senhaConfere = await this.hash.compare(senha, podeEntrar ? usuario.senha : await this.obterHashDeMentira());

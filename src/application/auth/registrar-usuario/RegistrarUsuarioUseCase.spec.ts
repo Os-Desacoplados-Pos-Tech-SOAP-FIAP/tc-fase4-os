@@ -24,4 +24,11 @@ describe('RegistrarUsuarioUseCase', () => {
     await useCase.execute(dados);
     await expect(useCase.execute(dados)).rejects.toEqual(expect.any(ConflitoError));
   });
+
+  it('grava o e-mail normalizado e recusa o mesmo e-mail com outras maiúsculas', async () => {
+    const dados = { nome: 'Caio', email: 'Caio@Oficina.Local', senha: 'senha123', perfil: PerfilAcesso.MECANICO };
+    const criado = await useCase.execute(dados);
+    expect(criado.email).toBe('caio@oficina.local');
+    await expect(useCase.execute({ ...dados, email: 'CAIO@oficina.local' })).rejects.toEqual(expect.any(ConflitoError));
+  });
 });

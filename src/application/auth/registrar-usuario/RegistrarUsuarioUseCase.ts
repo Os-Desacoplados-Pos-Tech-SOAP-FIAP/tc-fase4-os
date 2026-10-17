@@ -25,7 +25,7 @@ export class RegistrarUsuarioUseCase {
   ) {}
 
   async execute(input: RegistrarUsuarioInput) {
-    if (await this.usuarios.buscarPorEmail(input.email)) {
+    if (await this.usuarios.buscarPorEmail(Usuario.normalizarEmail(input.email))) {
       throw new ConflitoError('E-mail já cadastrado', 'EMAIL_JA_CADASTRADO');
     }
     const usuario = Usuario.criar({ ...input, senha: await this.hash.hash(input.senha) });

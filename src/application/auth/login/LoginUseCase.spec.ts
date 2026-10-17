@@ -40,6 +40,14 @@ describe('LoginUseCase', () => {
     });
   });
 
+  it('aceita o e-mail sem diferenciar maiúsculas', async () => {
+    await usuarios.salvar(
+      Usuario.criar({ nome: 'Atendente', email: 'atendente@oficina.local', senha: 'hash:senha123', perfil: PerfilAcesso.ATENDENTE }),
+    );
+    const resultado = await useCase.execute('  Atendente@Oficina.Local ', 'senha123');
+    expect(resultado.usuario.email).toBe('atendente@oficina.local');
+  });
+
   it('senha errada, e-mail inexistente e usuário inativo têm a mesma resposta', async () => {
     await expect(useCase.execute('ana@oficina.local', 'errada')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
     await expect(useCase.execute('ninguem@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);

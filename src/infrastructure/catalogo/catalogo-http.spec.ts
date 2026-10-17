@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import { CatalogoIndisponivelError } from '../../application/errors';
 import { CatalogoHttp } from './catalogo-http';
 
@@ -54,16 +56,35 @@ describe('CatalogoHttp', () => {
   });
 
   it.each([
-    ['erro 500', () => fetchMock.mockResolvedValue(resposta(500, {})), 'HTTP 500'],
-    ['erro 401', () => fetchMock.mockResolvedValue(resposta(401, {})), 'HTTP 401'],
-    ['corpo fora do contrato', () => fetchMock.mockResolvedValue(resposta(200, { id: ID })), 'resposta fora do contrato'],
-    ['corpo não JSON', () => fetchMock.mockResolvedValue(new Response('<html>', { status: 200 })), 'resposta fora do contrato'],
-    ['falha de rede', () => fetchMock.mockRejectedValue(new TypeError('fetch failed')), 'falha de rede'],
-    ['timeout', () => fetchMock.mockRejectedValue(Object.assign(new Error('t'), { name: 'TimeoutError' })), 'timeout'],
-  ])('%s → CatalogoIndisponivelError', async (_caso, preparar, motivo) => {
+    ['erro 500', () => fetchMock.mockResolvedValue(resposta(500, {})), 'HTTP 500', 500],
+    ['erro 401', () => fetchMock.mockResolvedValue(resposta(401, {})), 'HTTP 401', 401],
+    ['corpo fora do contrato', () => fetchMock.mockResolvedValue(resposta(200, { id: ID })), 'resposta fora do contrato', 200],
+    ['corpo não JSON', () => fetchMock.mockResolvedValue(new Response('<html>', { status: 200 })), 'resposta fora do contrato', 200],
+    ['falha de rede', () => fetchMock.mockRejectedValue(new TypeError('fetch failed')), 'falha de rede', undefined],
+    ['timeout', () => fetchMock.mockRejectedValue(Object.assign(new Error('t'), { name: 'TimeoutError' })), 'timeout', undefined],
+  ])('%s → CatalogoIndisponivelError com log de aviso', async (_caso, preparar, motivo, status) => {
+    const aviso = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     preparar();
     const erro = await catalogo.buscarServico(ID, TOKEN).catch((e: unknown) => e);
     expect(erro).toBeInstanceOf(CatalogoIndisponivelError);
     expect((erro as Error).message).toBe(`Catalog indisponível: ${motivo}`);
+    expect(aviso).toHaveBeenCalledTimes(1);
+    const [registro] = aviso.mock.calls[0];
+    expect(registro).toStrictEqual({
+      msg: 'Catalog indisponível',
+      motivo,
+      caminho: `servicos/${ID}`,
+      ...(status === undefined ? {} : { status }),
+    });
+    expect(JSON.stringify(aviso.mock.calls)).not.toContain(TOKEN);
+    aviso.mockRestore();
+  });
+
+  it('404 não gera log de aviso', async () => {
+    const aviso = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockResolvedValue(resposta(404));
+    await catalogo.buscarServico(ID, TOKEN);
+    expect(aviso).not.toHaveBeenCalled();
+    aviso.mockRestore();
   });
 });

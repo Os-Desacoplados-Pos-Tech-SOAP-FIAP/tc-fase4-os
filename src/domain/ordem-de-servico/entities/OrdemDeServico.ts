@@ -78,7 +78,7 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
       clienteId: new UniqueID(nova.clienteId).toValue(),
       veiculoId: new UniqueID(nova.veiculoId).toValue(),
       status: StatusOS.RECEBIDA,
-      observacoes: observacoes ? observacoes : null,
+      observacoes: observacoes || null,
       itens: [],
       orcamento: null,
       linkPagamento: null,

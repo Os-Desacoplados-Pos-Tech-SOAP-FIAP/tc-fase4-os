@@ -5,6 +5,7 @@ import { trace } from '@opentelemetry/api';
 import { LoggerModule } from 'nestjs-pino';
 
 import { RolesGuard } from './common/guards/roles.guard';
+import { semDadoPessoal } from './common/logging/sem-dado-pessoal';
 import { validarAmbiente } from './config/env.validation';
 import { JwtAuthGuard } from './infrastructure/auth/jwt-auth.guard';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
@@ -29,6 +30,9 @@ import { VeiculoModule } from './modules/veiculo/veiculo.module';
           'req.headers.referer',
           'req.headers["x-internal-token"]',
         ],
+        // CPF, documento e placa (LGPD) também não. O pino-http aplica este serializer
+        // sobre o padrão (pino.stdSerializers.req).
+        serializers: { req: semDadoPessoal },
         // trace_id/span_id em todo log: salto direto do log para o trace no Grafana.
         mixin() {
           const span = trace.getActiveSpan();

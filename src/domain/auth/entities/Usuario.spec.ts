@@ -18,6 +18,12 @@ describe('Usuario', () => {
     expect(usuario.ativo).toBe(true);
   });
 
+  it('normaliza o e-mail sem diferenciar maiúsculas', () => {
+    const usuario = Usuario.criar({ nome: 'Maria', email: '  Maria@Email.COM ', senha: 'hash', perfil: PerfilAcesso.ATENDENTE });
+    expect(usuario.email).toBe('maria@email.com');
+    expect(Usuario.normalizarEmail(' Maria@Email.COM ')).toBe('maria@email.com');
+  });
+
   it.each([
     ['nome', { nome: '', email: 'a@b.com', senha: 'h' }],
     ['email', { nome: 'Ana', email: '', senha: 'h' }],

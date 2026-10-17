@@ -6,8 +6,8 @@ interface PlacaProps {
 }
 
 export class Placa extends ValueObject<PlacaProps> {
-  private static readonly ANTIGA = /^[A-Z]{3}-?[0-9]{4}$/;
-  private static readonly MERCOSUL = /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/;
+  private static readonly ANTIGA = /^[A-Z]{3}\d{4}$/;
+  private static readonly MERCOSUL = /^[A-Z]{3}\d[A-Z]\d{2}$/;
 
   private constructor(props: PlacaProps) {
     super(props);
@@ -15,9 +15,8 @@ export class Placa extends ValueObject<PlacaProps> {
 
   public static create(input: string): Placa {
     const value = (input ?? '').toUpperCase().replace(/\s/g, '');
-    const sanitized = value.replace('-', '');
-    const semHifen = sanitized;
-    const isAntiga = /^[A-Z]{3}[0-9]{4}$/.test(semHifen);
+    const semHifen = value.replace('-', '');
+    const isAntiga = Placa.ANTIGA.test(semHifen);
     const isMercosul = Placa.MERCOSUL.test(semHifen);
     if (!isAntiga && !isMercosul) {
       throw new DomainError(`Placa inválida: ${input}`, 'PLACA_INVALIDA');
@@ -31,7 +30,7 @@ export class Placa extends ValueObject<PlacaProps> {
 
   public format(): string {
     const v = this.props.value;
-    if (/^[A-Z]{3}[0-9]{4}$/.test(v)) {
+    if (Placa.ANTIGA.test(v)) {
       return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
     }
     return v;

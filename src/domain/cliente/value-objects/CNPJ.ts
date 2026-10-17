@@ -28,7 +28,7 @@ export class CNPJ extends ValueObject<CNPJProps> {
   }
 
   private static isValid(cnpj: string): boolean {
-    if (!cnpj || cnpj.length !== 14) return false;
+    if (cnpj?.length !== 14) return false;
     if (/^(\d)\1{13}$/.test(cnpj)) return false;
 
     const calc = (base: string): number => {
@@ -38,16 +38,16 @@ export class CNPJ extends ValueObject<CNPJProps> {
           : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
       let sum = 0;
       for (let i = 0; i < base.length; i++) {
-        sum += parseInt(base[i], 10) * weights[i];
+        sum += Number.parseInt(base[i], 10) * weights[i];
       }
       const rest = sum % 11;
       return rest < 2 ? 0 : 11 - rest;
     };
 
     const d1 = calc(cnpj.slice(0, 12));
-    if (d1 !== parseInt(cnpj[12], 10)) return false;
+    if (d1 !== Number.parseInt(cnpj[12], 10)) return false;
     const d2 = calc(cnpj.slice(0, 13));
-    if (d2 !== parseInt(cnpj[13], 10)) return false;
+    if (d2 !== Number.parseInt(cnpj[13], 10)) return false;
     return true;
   }
 }
