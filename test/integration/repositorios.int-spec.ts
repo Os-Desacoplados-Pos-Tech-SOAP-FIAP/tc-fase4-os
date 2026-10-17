@@ -64,7 +64,7 @@ describe('repositórios Prisma', () => {
     expect(b).toBe(a + 1);
   });
 
-  it('grava e lê a OS com itens, orçamento, link e histórico em ordem', async () => {
+  it('grava e lê a OS com itens, orçamento e histórico em ordem', async () => {
     const os = await novaOs();
     await ordens.salvar(os);
     expect(os.historicoPendente).toEqual([]);
@@ -92,6 +92,68 @@ describe('repositórios Prisma', () => {
       [StatusOS.RECEBIDA, StatusOS.EM_DIAGNOSTICO],
       [StatusOS.EM_DIAGNOSTICO, StatusOS.AGUARDANDO_APROVACAO],
     ]);
+  });
+
+  it('grava e relê link de pagamento e motivo do histórico até a cobrança', async () => {
+    const os = await novaOs();
+    os.iniciarDiagnostico();
+    os.adicionarItem({ tipo: TipoItemOrcamento.SERVICO, referenciaId: SERVICO, descricao: 'Revisão', quantidade: 1, valorUnitario: 250 });
+    os.registrarOrcamentoEnviado(250, new Date('2026-10-20T12:00:00Z'));
+    os.aprovarOrcamento();
+    os.iniciarExecucao();
+    os.finalizarExecucao();
+    os.registrarCobranca('https://pagamento.example.com/link/123');
+    await ordens.salvar(os);
+
+    const relida = (await ordens.buscarPorId(os.id.toValue()))!;
+    expect(relida.status).toBe(StatusOS.FINALIZADA);
+    expect(relida.linkPagamento).toBe('https://pagamento.example.com/link/123');
+
+    relida.registrarPagamentoRecusado('cartão negado');
+    await ordens.salvar(relida);
+    expect((await ordens.buscarPorId(os.id.toValue()))!.linkPagamento).toBeNull();
+
+    const historico = await ordens.historico(os.id.toValue());
+    expect(historico.map((r) => r.motivo)).toEqual([
+      'OS aberta',
+      'Diagnóstico iniciado',
+      'Orçamento enviado ao cliente',
+      'Orçamento aprovado pelo cliente',
+      'Reparo iniciado',
+      'Execução concluída',
+      'Pagamento recusado: cartão negado',
+    ]);
+    expect(historico.at(-1)).toEqual(
+      expect.objectContaining({ de: StatusOS.FINALIZADA, para: StatusOS.FINALIZADA }),
+    );
+  });
+
+  it('falha na saga dentro de tm.run desfaz a OS gravada antes (status, versão, itens e histórico)', async () => {
+    const os = await novaOs();
+    await ordens.salvar(os);
+    await sagas.salvar(SagaInstance.iniciar(os.id.toValue()));
+    const sagaVelha = (await sagas.buscar(os.id.toValue()))!;
+    const sagaAtual = (await sagas.buscar(os.id.toValue()))!;
+    sagaAtual.avancar(EtapaSaga.ORCAMENTO);
+    await sagas.salvar(sagaAtual);
+
+    const lida = (await ordens.buscarPorId(os.id.toValue()))!;
+    lida.iniciarDiagnostico();
+    lida.adicionarItem({ tipo: TipoItemOrcamento.SERVICO, referenciaId: SERVICO, descricao: 'Revisão', quantidade: 1, valorUnitario: 250 });
+    sagaVelha.avancar(EtapaSaga.ORCAMENTO);
+
+    await expect(
+      tm.run(async () => {
+        await ordens.salvar(lida);
+        await sagas.salvar(sagaVelha);
+      }),
+    ).rejects.toBeInstanceOf(ConcorrenciaError);
+
+    const depois = (await ordens.buscarPorId(os.id.toValue()))!;
+    expect(depois.status).toBe(StatusOS.RECEBIDA);
+    expect(depois.versao).toBe(1);
+    expect(depois.itens).toEqual([]);
+    expect((await ordens.historico(os.id.toValue())).map((r) => r.para)).toEqual([StatusOS.RECEBIDA]);
   });
 
   it('atualiza quantidade de item já gravado', async () => {

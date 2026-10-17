@@ -53,6 +53,10 @@ describe('PrismaTravaPorOs', () => {
     expect(eventos).toEqual(['1-travou', '1-fim', '2-travou']);
   });
 
+  it('fora de ITransactionManager.run lança em vez de travar e soltar na hora', async () => {
+    await expect(trava.travar(OS_A)).rejects.toThrow('travar exige uma transação ativa (ITransactionManager.run)');
+  });
+
   it('OS diferentes não esperam uma pela outra', async () => {
     const eventos: string[] = [];
     const primeira = await segurarTrava(OS_A, eventos);

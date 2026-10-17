@@ -23,6 +23,11 @@ const lerInsumo: Leitor = (corpo) =>
     ? { id: corpo.id, descricao: corpo.nome, valorUnitario: corpo.valorUnitario, ativo: true }
     : null;
 
+/** Corpo não lido segura a conexão do pool do undici até o GC; descartar libera na hora. */
+async function descartarCorpo(resposta: Response): Promise<void> {
+  await resposta.body?.cancel();
+}
+
 /**
  * Cliente REST do Catalog (única chamada síncrona entre serviços da saga, spec §3).
  * Repassa o JWT do usuário: o Catalog aplica os próprios perfis.
@@ -49,8 +54,14 @@ export class CatalogoHttp implements ICatalogo {
     } catch (erro) {
       throw new CatalogoIndisponivelError((erro as Error).name === 'TimeoutError' ? 'timeout' : 'falha de rede');
     }
-    if (resposta.status === 404) return null;
-    if (!resposta.ok) throw new CatalogoIndisponivelError(`HTTP ${resposta.status}`);
+    if (resposta.status === 404) {
+      await descartarCorpo(resposta);
+      return null;
+    }
+    if (!resposta.ok) {
+      await descartarCorpo(resposta);
+      throw new CatalogoIndisponivelError(`HTTP ${resposta.status}`);
+    }
 
     const corpo: unknown = await resposta.json().catch(() => null);
     const item = typeof corpo === 'object' && corpo !== null ? ler(corpo as Record<string, unknown>) : null;

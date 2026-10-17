@@ -40,6 +40,19 @@ describe('CatalogoHttp', () => {
     expect(await catalogo.buscarServico(ID, TOKEN)).toBeNull();
   });
 
+  it.each([404, 500])('HTTP %i descarta o corpo da resposta antes de sair', async (status) => {
+    const respostaComCorpo = resposta(status, { message: 'x' });
+    const cancelar = jest.spyOn(respostaComCorpo.body!, 'cancel');
+    fetchMock.mockResolvedValue(respostaComCorpo);
+    await catalogo.buscarServico(ID, TOKEN).catch(() => undefined);
+    expect(cancelar).toHaveBeenCalledTimes(1);
+  });
+
+  it('404 sem corpo → null sem quebrar', async () => {
+    fetchMock.mockResolvedValue(resposta(404));
+    expect(await catalogo.buscarServico(ID, TOKEN)).toBeNull();
+  });
+
   it.each([
     ['erro 500', () => fetchMock.mockResolvedValue(resposta(500, {})), 'HTTP 500'],
     ['erro 401', () => fetchMock.mockResolvedValue(resposta(401, {})), 'HTTP 401'],

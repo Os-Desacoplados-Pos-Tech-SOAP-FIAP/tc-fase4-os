@@ -18,6 +18,9 @@ export class PrismaTravaPorOs implements ITravaPorOs {
   constructor(private readonly db: PrismaTransactionManager) {}
 
   async travar(osId: string): Promise<void> {
+    if (!this.db.emTransacao) {
+      throw new Error('travar exige uma transação ativa (ITransactionManager.run)');
+    }
     await this.db.client.$executeRaw`SELECT pg_advisory_xact_lock(${CLASSE_TRAVA_OS}::int, hashtext(${osId}))`;
   }
 }
