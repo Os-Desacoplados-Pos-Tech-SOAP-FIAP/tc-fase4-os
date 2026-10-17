@@ -33,6 +33,7 @@ function copiar(saga: SagaInstance, versao: number): SagaInstance {
   return SagaInstance.restaurar({
     osId: saga.osId,
     etapa: saga.etapa,
+    codigoCompensacao: saga.codigoCompensacao,
     motivoCompensacao: saga.motivoCompensacao,
     versao,
   });

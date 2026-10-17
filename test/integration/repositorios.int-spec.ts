@@ -204,9 +204,11 @@ describe('repositórios Prisma', () => {
     expect(lida.etapa).toBe(EtapaSaga.ORCAMENTO);
     expect(lida.versao).toBe(2);
     lida.avancar(EtapaSaga.RESERVA);
-    lida.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, 'Sem estoque');
+    lida.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, 'ESTOQUE_INSUFICIENTE', 'Sem estoque');
     await sagas.salvar(lida);
-    expect((await sagas.buscar(os.id.toValue()))!.motivoCompensacao).toBe('Sem estoque');
+    const compensando = (await sagas.buscar(os.id.toValue()))!;
+    expect(compensando.motivoCompensacao).toBe('Sem estoque');
+    expect(compensando.codigoCompensacao).toBe('ESTOQUE_INSUFICIENTE');
     expect(await sagas.buscar('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 

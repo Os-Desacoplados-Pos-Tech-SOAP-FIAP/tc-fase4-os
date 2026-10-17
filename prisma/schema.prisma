@@ -155,6 +155,7 @@ model HistoricoStatus {
 model SagaInstance {
   osId              String    @id
   etapa             EtapaSaga
+  codigoCompensacao String?
   motivoCompensacao String?
   versao            Int
   criadoEm          DateTime  @default(now())

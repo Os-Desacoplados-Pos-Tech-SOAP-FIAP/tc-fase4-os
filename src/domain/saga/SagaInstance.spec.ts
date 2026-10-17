@@ -3,12 +3,13 @@ import { EtapaSaga, SagaInstance } from './SagaInstance';
 const OS_ID = '55555555-5555-4555-8555-555555555555';
 
 describe('SagaInstance', () => {
-  it('inicia no diagnóstico, versão 0, sem motivo', () => {
+  it('inicia no diagnóstico, versão 0, sem código nem motivo', () => {
     const saga = SagaInstance.iniciar(OS_ID);
     expect(saga.osId).toBe(OS_ID);
     expect(saga.etapa).toBe(EtapaSaga.DIAGNOSTICO);
     expect(saga.versao).toBe(0);
     expect(saga.motivoCompensacao).toBeNull();
+    expect(saga.codigoCompensacao).toBeNull();
     expect(saga.pivoAtingido).toBe(false);
   });
 
@@ -34,15 +35,16 @@ describe('SagaInstance', () => {
     expect(saga.terminada).toBe(true);
   });
 
-  it('compensa a recusa da execução em duas etapas, guardando o motivo', () => {
+  it('compensa a recusa da execução em duas etapas, guardando código e motivo', () => {
     const saga = SagaInstance.iniciar(OS_ID);
     saga.avancar(EtapaSaga.ORCAMENTO);
     saga.avancar(EtapaSaga.RESERVA);
     saga.avancar(EtapaSaga.EXECUCAO_SOLICITADA);
-    saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, 'Fila de execução cheia');
+    saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, 'CAPACIDADE_ESGOTADA', 'Fila de execução cheia');
     saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
     saga.avancar(EtapaSaga.COMPENSADA);
     expect(saga.motivoCompensacao).toBe('Fila de execução cheia');
+    expect(saga.codigoCompensacao).toBe('CAPACIDADE_ESGOTADA');
     expect(saga.terminada).toBe(true);
     expect(saga.pivoAtingido).toBe(false);
   });
@@ -51,7 +53,7 @@ describe('SagaInstance', () => {
     const saga = SagaInstance.iniciar(OS_ID);
     saga.avancar(EtapaSaga.ORCAMENTO);
     saga.avancar(EtapaSaga.RESERVA);
-    saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, 'Sem estoque');
+    saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, 'ESTOQUE_INSUFICIENTE', 'Sem estoque');
     expect(saga.em(EtapaSaga.COMPENSANDO_ORCAMENTO)).toBe(true);
   });
 
@@ -60,7 +62,7 @@ describe('SagaInstance', () => {
     [EtapaSaga.EXECUCAO, EtapaSaga.COMPENSANDO_RESERVAS],
     [EtapaSaga.CONCLUIDA, EtapaSaga.DIAGNOSTICO],
   ])('recusa %s → %s', (de, para) => {
-    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, motivoCompensacao: null, versao: 1 });
+    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1 });
     expect(() => saga.avancar(para)).toThrow(expect.objectContaining({ code: 'SAGA_TRANSICAO_INVALIDA' }));
   });
 
@@ -68,10 +70,11 @@ describe('SagaInstance', () => {
     const saga = SagaInstance.restaurar({
       osId: OS_ID,
       etapa: EtapaSaga.RESERVA,
+      codigoCompensacao: null,
       motivoCompensacao: null,
       versao: 2,
     });
-    expect(() => saga.compensar(EtapaSaga.EXECUCAO_SOLICITADA, 'x')).toThrow(
+    expect(() => saga.compensar(EtapaSaga.EXECUCAO_SOLICITADA, 'X', 'x')).toThrow(
       expect.objectContaining({ code: 'SAGA_COMPENSACAO_INVALIDA' }),
     );
   });
@@ -84,7 +87,7 @@ describe('SagaInstance', () => {
     [EtapaSaga.RESERVA, EtapaSaga.COMPENSANDO_ORCAMENTO],
     [EtapaSaga.EXECUCAO_SOLICITADA, EtapaSaga.COMPENSANDO_RESERVAS],
   ])('avancar recusa entrar em compensação sem motivo (%s → %s)', (de, para) => {
-    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, motivoCompensacao: null, versao: 1 });
+    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1 });
     expect(() => saga.avancar(para)).toThrow(
       expect.objectContaining({ code: 'SAGA_COMPENSACAO_SEM_MOTIVO' }),
     );
@@ -95,12 +98,14 @@ describe('SagaInstance', () => {
     const saga = SagaInstance.restaurar({
       osId: OS_ID,
       etapa: EtapaSaga.COMPENSANDO_RESERVAS,
+      codigoCompensacao: 'CAPACIDADE_ESGOTADA',
       motivoCompensacao: 'Fila cheia',
       versao: 3,
     });
     saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
     expect(saga.etapa).toBe(EtapaSaga.COMPENSANDO_ORCAMENTO);
     expect(saga.motivoCompensacao).toBe('Fila cheia');
+    expect(saga.codigoCompensacao).toBe('CAPACIDADE_ESGOTADA');
   });
 
   it('em() aceita várias etapas', () => {

@@ -46,8 +46,9 @@ describe('OrquestradorSaga — compensações (antes do pivô)', () => {
     expect(await etapa()).toBe(EtapaSaga.COMPENSANDO_ORCAMENTO);
     expect(await status()).toBe(StatusOS.APROVADA);
     expect((await c.sagas.buscar(osId))!.motivoCompensacao).toBe(
-      'Reserva de insumos falhou [ESTOQUE_INSUFICIENTE]: Sem estoque de Filtro de óleo',
+      'Reserva de insumos falhou: Sem estoque de Filtro de óleo',
     );
+    expect((await c.sagas.buscar(osId))!.codigoCompensacao).toBe('ESTOQUE_INSUFICIENTE');
     expect(c.outbox.enviadas.map((m) => [m.destino, m.envelope.type, m.envelope.payload])).toEqual([
       ['fila-billing', 'billing.cancelar-orcamento.v1', { motivo: 'Não há estoque suficiente para as peças do orçamento' }],
     ]);
@@ -56,7 +57,7 @@ describe('OrquestradorSaga — compensações (antes do pivô)', () => {
     await orq.orcamentoCancelado(contexto(osId));
     expect(await status()).toBe(StatusOS.CANCELADA);
     expect(await etapa()).toBe(EtapaSaga.COMPENSADA);
-    expect(await ultimoMotivo()).toBe('Reserva de insumos falhou [ESTOQUE_INSUFICIENTE]: Sem estoque de Filtro de óleo');
+    expect(await ultimoMotivo()).toBe('Reserva de insumos falhou: Sem estoque de Filtro de óleo');
   });
 
   it('execucao-recusada: libera reservas, depois cancela o orçamento, depois CANCELADA (E6)', async () => {
@@ -68,6 +69,7 @@ describe('OrquestradorSaga — compensações (antes do pivô)', () => {
     expect(await etapa()).toBe(EtapaSaga.COMPENSANDO_RESERVAS);
     expect(c.outbox.tipos()).toEqual(['catalog.liberar-reservas.v1']);
     expect(c.outbox.ultima().envelope.causationId).toBe(recusa.messageId);
+    expect((await c.sagas.buscar(osId))!.codigoCompensacao).toBe('CAPACIDADE_ESGOTADA');
 
     const liberadas = contexto(osId);
     await orq.reservasLiberadas(liberadas);
@@ -79,13 +81,22 @@ describe('OrquestradorSaga — compensações (antes do pivô)', () => {
     await orq.orcamentoCancelado(contexto(osId));
     expect(await status()).toBe(StatusOS.CANCELADA);
     expect(await etapa()).toBe(EtapaSaga.COMPENSADA);
-    expect(await ultimoMotivo()).toBe('Execução recusada [CAPACIDADE_ESGOTADA]: Fila de execução cheia');
+    expect(await ultimoMotivo()).toBe('Execução recusada: Fila de execução cheia');
   });
 
   it('código sem texto próprio: cliente recebe o texto genérico; o detalhe técnico usa o código', async () => {
     await orq.reservaFalhou(contexto(osId), { motivo: 'INSUMO_NAO_ENCONTRADO' });
     expect(c.outbox.ultima().envelope.payload).toEqual({ motivo: 'Não foi possível seguir com o serviço' });
-    expect((await c.sagas.buscar(osId))!.motivoCompensacao).toBe('Reserva de insumos falhou [INSUMO_NAO_ENCONTRADO]');
+    expect((await c.sagas.buscar(osId))!.motivoCompensacao).toBe('Reserva de insumos falhou: INSUMO_NAO_ENCONTRADO');
+  });
+
+  it('reservas-liberadas com saga antiga sem código: cliente recebe o texto genérico', async () => {
+    await forcarEtapa(c, osId, EtapaSaga.COMPENSANDO_RESERVAS);
+    expect((await c.sagas.buscar(osId))!.codigoCompensacao).toBeNull();
+
+    await orq.reservasLiberadas(contexto(osId));
+
+    expect(c.outbox.ultima().envelope.payload).toEqual({ motivo: 'Não foi possível seguir com o serviço' });
   });
 
   it('insumos-reservados atrasado com a saga compensada → liberar-reservas e warn, sem mudar estado', async () => {

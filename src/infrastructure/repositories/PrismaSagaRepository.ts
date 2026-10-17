@@ -13,6 +13,7 @@ export class PrismaSagaRepository implements ISagaRepository {
   async salvar(saga: SagaInstance): Promise<void> {
     const dados = {
       etapa: EtapaSagaRow[saga.etapa],
+      codigoCompensacao: saga.codigoCompensacao,
       motivoCompensacao: saga.motivoCompensacao,
     };
     if (saga.versao === 0) {
@@ -32,6 +33,7 @@ export class PrismaSagaRepository implements ISagaRepository {
       ? SagaInstance.restaurar({
           osId: row.osId,
           etapa: EtapaSaga[row.etapa],
+          codigoCompensacao: row.codigoCompensacao,
           motivoCompensacao: row.motivoCompensacao,
           versao: row.versao,
         })
