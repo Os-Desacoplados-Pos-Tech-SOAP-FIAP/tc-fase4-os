@@ -30,3 +30,30 @@ services:
       test: ['CMD-SHELL', "curl -s localhost:4566/_localstack/init/ready | grep -q '\"completed\": *true'"]
       interval: 5s
       retries: 20
+
+  migrate-catalog:
+    build: { context: ../../tc-fase4-catalog, dockerfile: docker/Dockerfile, target: builder }
+    # Seed: serviços e insumos de exemplo com ids fixos (inclui um insumo com estoque zero).
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    environment:
+      DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-billing:
+    build: { context: ../../tc-fase4-billing, dockerfile: docker/Dockerfile, target: builder }
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://billing:billing@postgres:5432/billing?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-os:
+    build: { context: .., dockerfile: docker/Dockerfile, target: builder }
+    # Seed: usuários de teste e cliente/veículo com ids fixos (senhas locais padrão, NODE_ENV=development).
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://os:os@postgres:5432/os?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
