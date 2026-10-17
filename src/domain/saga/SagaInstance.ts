@@ -44,6 +44,9 @@ const POS_PIVO: ReadonlySet<EtapaSaga> = new Set([
 export interface SagaInstanceProps {
   osId: string;
   etapa: EtapaSaga;
+  /** Código da falha que disparou a compensação (define o texto enviado ao cliente). */
+  codigoCompensacao: string | null;
+  /** Detalhe técnico legível da falha (histórico da OS). */
   motivoCompensacao: string | null;
   /** Versão lida do banco (0 = ainda não persistida). */
   versao: number;
@@ -54,7 +57,7 @@ export class SagaInstance {
   private constructor(private readonly props: SagaInstanceProps) {}
 
   public static iniciar(osId: string): SagaInstance {
-    return new SagaInstance({ osId: new UniqueID(osId).toValue(), etapa: EtapaSaga.DIAGNOSTICO, motivoCompensacao: null, versao: 0 });
+    return new SagaInstance({ osId: new UniqueID(osId).toValue(), etapa: EtapaSaga.DIAGNOSTICO, codigoCompensacao: null, motivoCompensacao: null, versao: 0 });
   }
 
   public static restaurar(props: SagaInstanceProps): SagaInstance {
@@ -66,6 +69,9 @@ export class SagaInstance {
   }
   public get etapa(): EtapaSaga {
     return this.props.etapa;
+  }
+  public get codigoCompensacao(): string | null {
+    return this.props.codigoCompensacao;
   }
   public get motivoCompensacao(): string | null {
     return this.props.motivoCompensacao;
@@ -96,13 +102,14 @@ export class SagaInstance {
     this.props.etapa = para;
   }
 
-  /** Entra numa etapa de compensação guardando o motivo (vai no cancelar-orcamento e na OS). */
-  public compensar(para: EtapaSaga, motivo: string): void {
+  /** Entra numa etapa de compensação guardando o código da falha e o motivo técnico. */
+  public compensar(para: EtapaSaga, codigo: string, motivo: string): void {
     if (!COMPENSACOES.has(para)) {
       throw new DomainError(`${para} não é etapa de compensação`, 'SAGA_COMPENSACAO_INVALIDA');
     }
     this.validarTransicao(para);
     this.props.etapa = para;
+    this.props.codigoCompensacao = codigo;
     this.props.motivoCompensacao = motivo;
   }
 

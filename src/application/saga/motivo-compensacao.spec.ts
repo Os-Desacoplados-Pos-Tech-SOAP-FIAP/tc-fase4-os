@@ -1,4 +1,4 @@
-import { codigoDoMotivoTecnico, motivoParaCliente, motivoTecnico } from './motivo-compensacao';
+import { motivoParaCliente, motivoTecnico } from './motivo-compensacao';
 
 describe('motivo da compensação', () => {
   describe('motivoParaCliente', () => {
@@ -17,27 +17,16 @@ describe('motivo da compensação', () => {
   });
 
   describe('motivoTecnico', () => {
-    it('guarda contexto, código e mensagem', () => {
+    it('junta contexto e mensagem legível, sem o código', () => {
       expect(motivoTecnico('Execução recusada', { motivo: 'CAPACIDADE_ESGOTADA', mensagem: 'Fila cheia' })).toBe(
-        'Execução recusada [CAPACIDADE_ESGOTADA]: Fila cheia',
+        'Execução recusada: Fila cheia',
       );
     });
 
-    it('sem mensagem fica só com o código', () => {
+    it('sem mensagem usa o código', () => {
       expect(motivoTecnico('Reserva de insumos falhou', { motivo: 'ESTOQUE_INSUFICIENTE' })).toBe(
-        'Reserva de insumos falhou [ESTOQUE_INSUFICIENTE]',
+        'Reserva de insumos falhou: ESTOQUE_INSUFICIENTE',
       );
-    });
-  });
-
-  describe('codigoDoMotivoTecnico', () => {
-    it('recupera o código gravado no motivo técnico', () => {
-      const motivo = motivoTecnico('Execução recusada', { motivo: 'CAPACIDADE_ESGOTADA', mensagem: 'Fila [x] cheia' });
-      expect(codigoDoMotivoTecnico(motivo)).toBe('CAPACIDADE_ESGOTADA');
-    });
-
-    it.each([null, 'Motivo sem código'])('%s → null', (motivo) => {
-      expect(codigoDoMotivoTecnico(motivo)).toBeNull();
     });
   });
 });

@@ -16,7 +16,7 @@ import { IProcessedMessageRepository } from '../ports/processed-message.reposito
 import { ITransactionManager } from '../ports/transaction-manager';
 import { ITravaPorOs } from '../ports/trava-por-os';
 import { ComandoSaga, comandos, enviarComandos } from './comandos-saga';
-import { codigoDoMotivoTecnico, motivoParaCliente, motivoTecnico } from './motivo-compensacao';
+import { motivoParaCliente, motivoTecnico } from './motivo-compensacao';
 import { CobrancaGeradaLida, FalhaLida, OrcamentoEnviadoLido } from './saga-messages';
 
 export interface ContextoEvento extends ContextoMensagem {
@@ -158,7 +158,7 @@ export class OrquestradorSaga {
   reservaFalhou(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.RESERVA)) return IGNORADO;
-      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, motivoTecnico('Reserva de insumos falhou', falha));
+      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, falha.motivo, motivoTecnico('Reserva de insumos falhou', falha));
       return [comandos.cancelarOrcamento(motivoParaCliente(falha.motivo))];
     });
   }
@@ -167,7 +167,7 @@ export class OrquestradorSaga {
   execucaoRecusada(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.EXECUCAO_SOLICITADA)) return IGNORADO;
-      saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, motivoTecnico('Execução recusada', falha));
+      saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, falha.motivo, motivoTecnico('Execução recusada', falha));
       return [comandos.liberarReservas()];
     });
   }
@@ -176,7 +176,7 @@ export class OrquestradorSaga {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.COMPENSANDO_RESERVAS)) return IGNORADO;
       saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
-      return [comandos.cancelarOrcamento(motivoParaCliente(codigoDoMotivoTecnico(saga.motivoCompensacao)))];
+      return [comandos.cancelarOrcamento(motivoParaCliente(saga.codigoCompensacao))];
     });
   }
 

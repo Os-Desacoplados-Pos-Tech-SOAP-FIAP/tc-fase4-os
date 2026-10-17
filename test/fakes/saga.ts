@@ -62,6 +62,12 @@ export async function versoes(c: Cenario, osId: string): Promise<{ os: number; s
 export async function forcarEtapa(c: Cenario, osId: string, etapa: EtapaSaga): Promise<void> {
   const atual = (await c.sagas.buscar(osId))!;
   await c.sagas.salvar(
-    SagaInstance.restaurar({ osId, etapa, motivoCompensacao: atual.motivoCompensacao, versao: atual.versao }),
+    SagaInstance.restaurar({
+      osId,
+      etapa,
+      codigoCompensacao: atual.codigoCompensacao,
+      motivoCompensacao: atual.motivoCompensacao,
+      versao: atual.versao,
+    }),
   );
 }

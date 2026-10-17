@@ -11,19 +11,12 @@ const MOTIVOS_PARA_CLIENTE: Readonly<Record<string, string>> = {
 
 const MOTIVO_PADRAO_PARA_CLIENTE = 'Não foi possível seguir com o serviço';
 
-/** Código entre colchetes no motivo técnico, para derivar o texto do cliente depois (reservas-liberadas). */
-const CODIGO_NO_MOTIVO = /\[([A-Z0-9_]+)\]/;
-
+/** Código nulo (saga gravada antes da coluna) ou sem texto próprio → texto genérico. */
 export function motivoParaCliente(codigo: string | null): string {
   return (codigo && MOTIVOS_PARA_CLIENTE[codigo]) || MOTIVO_PADRAO_PARA_CLIENTE;
 }
 
-/** Detalhe técnico guardado na saga e no histórico da OS: `contexto [CODIGO]: mensagem`. */
+/** Detalhe técnico guardado na saga e no histórico da OS: `contexto: mensagem` (ou o código, sem mensagem). */
 export function motivoTecnico(contexto: string, falha: FalhaLida): string {
-  const base = `${contexto} [${falha.motivo}]`;
-  return falha.mensagem ? `${base}: ${falha.mensagem}` : base;
-}
-
-export function codigoDoMotivoTecnico(motivo: string | null): string | null {
-  return motivo?.match(CODIGO_NO_MOTIVO)?.[1] ?? null;
+  return `${contexto}: ${falha.mensagem || falha.motivo}`;
 }
