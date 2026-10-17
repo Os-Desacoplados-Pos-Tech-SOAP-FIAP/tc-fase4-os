@@ -190,6 +190,31 @@ async function entregar(ctx, osId) {
   return esperarStatus(ctx, osId, 'ENTREGUE');
 }
 
+/** Recusa → OS pede nova cobrança; o fake repete o mesmo initPoint, então compara a cobrança. */
+async function esperarNovaCobranca(ctx, osId, anterior) {
+  const lista = await esperar(
+    () => cobrancas(ctx, osId),
+    (l) => l.some((c) => c.id === anterior.id && c.status === 'RECUSADA') && l.some((c) => c.id !== anterior.id && c.status === 'PENDENTE'),
+    (l) => `OS ${osId} não recebeu nova cobrança após a recusa: ${JSON.stringify(l)}`,
+  );
+  return lista.find((c) => c.id !== anterior.id && c.status === 'PENDENTE');
+}
+
+/** A compensação termina com o motivo técnico no histórico (CANCELADA) e o amigável no e-mail. */
+async function conferirCancelamento(ctx, os, motivoTecnico, motivoCliente) {
+  const historico = await historicoOs(ctx, os.id);
+  const cancelamento = historico.find((h) => h.para === 'CANCELADA');
+  if (!cancelamento?.motivo?.startsWith(motivoTecnico)) {
+    throw new Error(`motivo do cancelamento esperado "${motivoTecnico}...", veio "${cancelamento?.motivo}"`);
+  }
+  const padrao = new RegExp(`OS #${os.numero} cancelado".*Motivo: ${motivoCliente}`);
+  await esperar(
+    async () => padrao.test(compose('logs', 'billing')),
+    Boolean,
+    () => `e-mail de cancelamento da OS ${os.numero} sem "Motivo: ${motivoCliente}"`,
+  );
+}
+
 const CENARIOS = {
   async feliz(ctx) {
     const { os, token } = await ateAguardandoAprovacao(ctx);
@@ -205,6 +230,63 @@ const CENARIOS = {
       (i) => `insumo ${ctx.insumo.id} com reserva ${i?.quantidadeReservada}, esperado 0`,
     );
     if (insumo.quantidadeEstoque !== 98) throw new Error(`estoque esperado 98, veio ${insumo.quantidadeEstoque}`);
+  },
+
+  async a(ctx) {
+    const { os, token } = await ateAguardandoAprovacao(ctx);
+    await decidir(os, token, 'REPROVADA');
+    await esperarStatus(ctx, os.id, 'REPROVADA');
+  },
+
+  async b(ctx) {
+    const { os, token } = await ateAguardandoAprovacao(ctx, ctx.insumoSemEstoque);
+    await decidir(os, token, 'APROVADA');
+    await esperarStatus(ctx, os.id, 'CANCELADA');
+    await conferirCancelamento(ctx, os, 'Reserva de insumos falhou', 'Não há estoque suficiente');
+  },
+
+  async c(ctx) {
+    // Vaga única: a primeira OS ocupa a oficina, a segunda é recusada e compensada.
+    const reservadaAntes = (await chamar('GET', `${URL.catalog}/insumos/${ctx.insumo.id}`, { token: ctx.admin })).quantidadeReservada;
+    const primeira = await ateAguardandoAprovacao(ctx);
+    await decidir(primeira.os, primeira.token, 'APROVADA');
+    await ateExecucaoAceita(ctx, primeira.os.id);
+    const segunda = await ateAguardandoAprovacao(ctx);
+    await decidir(segunda.os, segunda.token, 'APROVADA');
+    await esperarStatus(ctx, segunda.os.id, 'CANCELADA');
+    await conferirCancelamento(ctx, segunda.os, 'Execução recusada', 'A oficina está sem capacidade');
+    const insumo = await chamar('GET', `${URL.catalog}/insumos/${ctx.insumo.id}`, { token: ctx.admin });
+    // Reservas da segunda liberadas: só a primeira continua reservando.
+    if (insumo.quantidadeReservada !== reservadaAntes + 2) {
+      throw new Error(`reserva esperada ${reservadaAntes + 2}, veio ${insumo.quantidadeReservada}`);
+    }
+    await executarReparo(ctx, primeira.os.id);
+    await pagar(ctx, primeira.os.id, true);
+    await entregar(ctx, primeira.os.id);
+  },
+
+  async d(ctx) {
+    const { os, token } = await ateAguardandoAprovacao(ctx);
+    await decidir(os, token, 'APROVADA');
+    await ateExecucaoAceita(ctx, os.id);
+    await executarReparo(ctx, os.id);
+    const recusada = await esperarCobrancaPendente(ctx, os.id);
+    await pagar(ctx, os.id, false);
+    await esperarNovaCobranca(ctx, os.id, recusada);
+    // A recusa zera o link na OS e o cobranca-gerada seguinte (mesmo grupo FIFO) grava o novo.
+    await esperar(
+      () => historicoOs(ctx, os.id),
+      (h) => h.some((r) => r.motivo?.startsWith('Pagamento recusado')),
+      () => `OS ${os.id} sem "Pagamento recusado" no histórico`,
+    );
+    const depois = await esperar(
+      () => buscarOs(ctx, os.id),
+      (o) => Boolean(o.linkPagamento),
+      (o) => `OS ${os.id} sem link de pagamento após a nova cobrança (status ${o?.status})`,
+    );
+    if (depois.status !== 'FINALIZADA') throw new Error(`após recusa esperado FINALIZADA, veio ${depois.status}`);
+    await pagar(ctx, os.id, true);
+    await entregar(ctx, os.id);
   },
 };
 
