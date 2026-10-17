@@ -364,6 +364,9 @@ isolado do OS.
 Para subir OS, Catalog, Execution e Billing juntos, com LocalStack e smoke automatizado da saga, veja
 [`local/README.md`](local/README.md).
 
+Para seguir o fluxo, os cenários de falha e as APIs pelo Postman (ou pelo newman), veja
+[`postman/README.md`](postman/README.md).
+
 ### Seed (dados fixos de desenvolvimento)
 
 | Registro | Id | Dados |
