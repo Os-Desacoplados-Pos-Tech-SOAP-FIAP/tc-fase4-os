@@ -32,7 +32,7 @@ const contexto = (envelope: MessageEnvelope): ContextoEvento => ({
 });
 
 /** Eventos sem decisão na saga: aceitos e descartados (a mensagem sai da fila). */
-const semEfeito = async (): Promise<void> => undefined;
+const semEfeito = (): Promise<void> => Promise.resolve();
 
 /**
  * Liga os eventos dos três serviços (fila de entrada do OS) ao orquestrador.
