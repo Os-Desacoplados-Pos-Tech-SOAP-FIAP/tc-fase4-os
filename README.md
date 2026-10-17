@@ -166,6 +166,44 @@ funciona com a OS `PAGA` e não envia comando.
   O detalhe técnico (`motivoCompensacao`, ex.: `Execução recusada: Fila de execução cheia`) fica na saga e no
   histórico da OS cancelada.
 
+### Por que orquestrada e não coreografada
+
+A saga desta oficina tem um pivô, compensações que precisam de ordem e regras que dependem da etapa em que a OS
+está. Por isso a escolha foi um orquestrador único, o OS, em vez de deixar cada serviço reagir aos eventos dos outros.
+
+- **Pivô na execução:** `execucao-aceita` é o ponto sem volta. Antes dele toda falha é compensada; depois, só há
+  retentativa (`execucao-recusada` tardia é ignorada e o pagamento recusado gera nova cobrança). Essa fronteira é
+  uma decisão sobre a saga inteira e fica num lugar só, o `OrquestradorSaga`, em vez de cada serviço precisar saber
+  se o pivô já passou.
+- **Compensação sequencial em ordem inversa:** fila cheia → `liberar-reservas` → `reservas-liberadas` →
+  `cancelar-orcamento` → `orcamento-cancelado` → OS `CANCELADA`. Cada passo espera a confirmação do anterior, e a
+  OS só é cancelada quando tudo foi desfeito. Numa coreografia, o Catalog e o Billing teriam de descobrir sozinhos
+  quando e em que ordem desfazer.
+- **Estado num lugar só:** a `SagaInstance` guarda a etapa, o `codigoCompensacao` e o `motivoCompensacao` de cada
+  OS, e o histórico da OS registra cada transição com o motivo. `GET /ordens-de-servico/:id` mostra a `etapaSaga`, e
+  `GET /ordens-de-servico/:id/historico` conta o que aconteceu, sem cruzar logs de quatro serviços.
+- **Regras centralizadas:** o orçamento é validado no `diagnostico-concluido`, antes de pedir o orçamento ao Billing
+  (reabre o diagnóstico em vez de mandar à DLQ um orçamento que o Billing recusaria), e evento fora de etapa é
+  ignorado com `warn`. A exceção é a reserva atrasada antes do pivô, que é liberada. A tabela de reações acima é a
+  regra inteira da saga, num arquivo.
+- **Os outros serviços não se conhecem:** Catalog, Execution e Billing só recebem comandos na própria fila de
+  entrada e publicam os próprios eventos. Nenhum assina o tópico de outro, e o OS não tem tópico próprio. Um
+  serviço novo na saga muda o orquestrador, não os demais.
+
+Trade-offs aceitos:
+
+- **O OS é um ponto central:** se ele para, a saga para. A mitigação é não perder nada enquanto isso. Os comandos
+  saem pela outbox transacional (gravados junto com o estado e reenviados até publicar). Os eventos esperam na
+  `oficina-os-inbox.fifo`, e o inbox é idempotente (`ProcessedMessage`), então reentrega não duplica efeito. O que
+  falha 3 vezes vai para a DLQ, em vez de travar a fila (ver [Limitação conhecida: DLQ](#limitação-conhecida-dlq)).
+- **Acoplamento do OS aos contratos dos outros serviços:** o OS conhece os comandos e eventos de todos. A mitigação é
+  o tolerant reader com versão no tipo (`.v1`): o OS valida só os campos que lê e ignora o resto do payload, então
+  campo novo não quebra o consumidor. Outra versão do tipo precisa de handler novo no OS (sem ele, a mensagem vai
+  para a DLQ).
+- **O que a coreografia custaria:** a lógica da saga ficaria espalhada pelos três serviços, cada um assinando os
+  eventos dos outros. A compensação em ordem inversa exigiria que cada serviço soubesse o estado dos demais, e
+  rastrear uma OS significaria reconstruir a sequência pelos logs de todos.
+
 ## Catálogo de eventos
 
 ### Envelope e entrega
