@@ -32,11 +32,16 @@ export class Usuario extends Entity<UsuarioProps> {
     }
     return new Usuario({
       nome: input.nome.trim(),
-      email: input.email.trim(),
+      email: Usuario.normalizarEmail(input.email),
       senha: input.senha,
       perfil: input.perfil,
       ativo: true,
     });
+  }
+
+  /** E-mail é chave de login: comparado sem espaços nas pontas e sem diferenciar maiúsculas. */
+  public static normalizarEmail(email: string): string {
+    return email.trim().toLowerCase();
   }
 
   public static restaurar(props: UsuarioProps, id: UniqueID): Usuario {
