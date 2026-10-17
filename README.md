@@ -14,7 +14,7 @@ Stack: NestJS 10, TypeScript, PostgreSQL 16, Prisma 5, SQS FIFO (AWS SDK v3), Pi
 ## Arquitetura geral
 
 O OS manda cada comando direto na fila de entrada do serviço dono e recebe todos os eventos pela própria fila de
-entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços (assinaturas criadas localmente por `local/localstack/init.sh` e, na AWS, pelo Terraform da infra na Etapa 8). Ele não tem tópico de
+entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços (assinaturas criadas localmente por `local/localstack/init.sh` e, na AWS, pelo Terraform do próprio OS em `terraform/messaging.tf`). Ele não tem tópico de
 eventos próprio. A única chamada síncrona entre serviços da saga é a consulta de preço ao Catalog (REST).
 
 ```mermaid
@@ -311,7 +311,7 @@ cp .env.example .env     # ajuste JWT_SECRET e INTERNAL_SERVICE_TOKEN
 npm ci
 docker compose up -d     # Postgres (5433) + LocalStack (SQS FIFO, filas criadas no boot)
 npx prisma migrate deploy
-npx prisma db seed
+npm run build && npx prisma db seed  # seed compilado (dist/infrastructure/database/seed.js)
 npm run start:dev        # http://localhost:3001/api/os/docs
 ```
 
@@ -425,3 +425,75 @@ O workflow `.github/workflows/ci.yml` (job `ci`) roda, em ordem:
 7. análise SonarCloud.
 
 `ci` e `SonarCloud Code Analysis` são checks obrigatórios para merge na `main` (ruleset `protect-main`).
+
+| Workflow | Gatilho | O que faz |
+|---|---|---|
+| `ci.yml` (job `ci`) | PR e push na `main` | lint, build, testes, imagem, Sonar |
+| `terraform.yml` (job `terraform`) | PR/push que mexe em `terraform/` | `fmt -check`, `init -backend=false`, `validate` |
+| `terraform.yml` (job `deploy`) | só **Run workflow** (`plan`/`apply`/`destroy`), com aprovação no environment `aws-infra` | aplica ou destrói os recursos do serviço |
+| `cd.yml` | CI verde na `main` ou **Run workflow** | imagem no ECR e deploy no EKS |
+
+## Deploy no EKS
+
+### O que o Terraform do serviço cria (`terraform/`)
+
+State em `s3://tc-fase4-tfstate-538880133939/os/terraform.tfstate`. Lê a infra compartilhada de
+`infra/terraform.tfstate` (`tc-fase4-infra`) e os states de `catalog/`, `execution/` e `billing/` (outputs
+`events_topic_arn`, `inbox_queue_arn` e `inbox_queue_url`).
+
+| Recurso | Nome |
+|---|---|
+| RDS PostgreSQL 16 (`db.t4g.micro`, 20 GB gp3, privado) | `oficina-fase4-os` |
+| SG do RDS (5432 só a partir dos nodes do EKS) | `oficina-fase4-os-rds` |
+| Segredo com a `DATABASE_URL` | `oficina-fase4/os/DATABASE_URL` |
+| Senhas do seed (`random_password`, 24 caracteres) | `oficina-fase4/os/SEED_SENHA_ADMIN`, `oficina-fase4/os/SEED_SENHA_PADRAO` |
+| Fila FIFO de entrada + DLQ (redrive após 3 recebimentos) | `oficina-os-inbox.fifo`, `oficina-os-inbox-dlq.fifo` |
+| Assinaturas da inbox nos 3 tópicos, com `raw_message_delivery` | `oficina-{catalog,execution,billing}-events.fifo` |
+| Queue policy da inbox (`sqs:SendMessage` só do SNS, com `aws:SourceArn` dos 3 tópicos) | — |
+| Role IRSA do pod (consome a inbox, envia comandos às 3 inboxes dos outros serviços) | `oficina-fase4-os` |
+
+Sem tópico próprio: o OS só envia comandos e consome eventos. Configuração de estudo: sem backup, sem snapshot
+final e sem proteção contra exclusão.
+
+### Ordem
+
+`tc-fase4-infra` → catalog → execution → billing → **os** → auth → gateway. O `plan` do OS falha enquanto
+qualquer um dos três states não tiver os outputs. Para derrubar, a ordem inversa: o OS antes dos três, porque
+assina os tópicos deles e tem permissão nas filas deles.
+
+### Rodar o Terraform
+
+Actions → **Terraform** → **Run workflow** → escolha `plan`, `apply` ou `destroy` → aprove em **Review
+deployments**. O `destroy` remove antes o namespace `os` do cluster (pods e Ingress), se o cluster estiver no ar.
+
+### O que o CD faz
+
+1. Usa o SHA que passou no CI; pula com aviso se o cluster `oficina-fase4` não está `ACTIVE` ou se o Terraform
+   do OS não foi aplicado (state sem outputs).
+2. Publica a imagem no ECR com tag = SHA (reaproveita se a tag já existe).
+3. Cria o Secret `os-secret` (`DATABASE_URL`, `JWT_SECRET`, `INTERNAL_SERVICE_TOKEN`, `SEED_SENHA_ADMIN` e
+   `SEED_SENHA_PADRAO`, lidos do Secrets Manager) e o ConfigMap `os-config`: `INBOX_QUEUE_URL`,
+   `CATALOG_COMMANDS_QUEUE_URL`, `EXECUTION_COMMANDS_QUEUE_URL`, `BILLING_COMMANDS_QUEUE_URL`,
+   `CATALOG_BASE_URL=http://catalog.catalog.svc.cluster.local/api/catalog`, `CATALOG_TIMEOUT_MS=3000`,
+   `JWT_EXPIRES_IN=8h`, as fixas e, se o Alloy estiver instalado, `OTEL_EXPORTER_OTLP_ENDPOINT`.
+4. Aplica `k8s/base` com a imagem do ECR, a role IRSA e o SG do ALB; o initContainer roda `prisma migrate deploy`.
+   O serviço entra no ALB interno em `/api/os`, o que inclui `/api/os/internal` (chamada pela Lambda; o bloqueio
+   ao público fica no API Gateway).
+5. Espera o rollout, roda o seed (idempotente) e faz um smoke em `/api/os/health` de dentro do pod.
+
+### Seed
+
+O seed é compilado (`dist/infrastructure/database/seed.js`) e o CD roda `npx --no-install prisma db seed` a cada
+deploy (`upsert`, não sobrescreve dados). No EKS as senhas vêm do Secrets Manager. Para consultar:
+`aws secretsmanager get-secret-value --secret-id oficina-fase4/os/SEED_SENHA_ADMIN --query SecretString --output text`
+(idem `SEED_SENHA_PADRAO`, do atendente e do mecânico). Para rodar à mão:
+`kubectl exec -n os deploy/os -- npx --no-install prisma db seed`.
+
+### Smoke da saga
+
+`local/smoke.mjs` roda contra o EKS com as variáveis de [Rodando o smoke contra o EKS](local/README.md#rodando-o-smoke-contra-o-eks).
+
+### Rollback
+
+Automático quando o rollout falha (`kubectl rollout undo`), com `describe` e logs no job. Manual:
+`kubectl rollout undo deployment/os -n os`, ou um `git revert` na `main` (o CD implanta o commit revertido).

@@ -8,3 +8,9 @@ coverage/
 .DS_Store
 .claude/
 local/.env
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

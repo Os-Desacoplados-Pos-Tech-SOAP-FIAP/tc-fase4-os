@@ -18,12 +18,12 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "prisma db seed",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "node dist/infrastructure/database/seed.js"
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.1149.0",

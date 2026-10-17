@@ -59,9 +59,11 @@ services:
       postgres: { condition: service_healthy }
 
   migrate-os:
-    build: { context: .., dockerfile: docker/Dockerfile, target: builder }
+    # Imagem final, a mesma do initContainer no EKS: Prisma CLI em dependencies e seed
+    # compilado em dist/infrastructure/database/seed.js.
+    build: { context: .., dockerfile: docker/Dockerfile }
     # Seed: usuários de teste e cliente/veículo com ids fixos (senhas locais padrão, NODE_ENV=development).
-    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    command: sh -c "npx --no-install prisma migrate deploy && npx --no-install prisma db seed"
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://os:os@postgres:5432/os?schema=public
