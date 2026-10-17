@@ -28,22 +28,22 @@ export class CPF extends ValueObject<CPFProps> {
   }
 
   private static isValid(cpf: string): boolean {
-    if (!cpf || cpf.length !== 11) return false;
+    if (cpf?.length !== 11) return false;
     if (/^(\d)\1{10}$/.test(cpf)) return false;
 
     const calc = (base: string, factorStart: number): number => {
       let sum = 0;
       for (let i = 0; i < base.length; i++) {
-        sum += parseInt(base[i], 10) * (factorStart - i);
+        sum += Number.parseInt(base[i], 10) * (factorStart - i);
       }
       const rest = (sum * 10) % 11;
       return rest === 10 ? 0 : rest;
     };
 
     const d1 = calc(cpf.slice(0, 9), 10);
-    if (d1 !== parseInt(cpf[9], 10)) return false;
+    if (d1 !== Number.parseInt(cpf[9], 10)) return false;
     const d2 = calc(cpf.slice(0, 10), 11);
-    if (d2 !== parseInt(cpf[10], 10)) return false;
+    if (d2 !== Number.parseInt(cpf[10], 10)) return false;
     return true;
   }
 }
