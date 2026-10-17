@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator';
 
 import { PerfilAcesso } from '../../../common/auth/perfil';
 
@@ -14,6 +14,7 @@ export class RegistrarUsuarioDto {
   @ApiProperty({ example: 'Maria Atendente' })
   @IsString()
   @MinLength(3)
+  @MaxLength(120)
   nome!: string;
 
   @ApiProperty({ example: 'maria@oficina.local' })
@@ -23,6 +24,7 @@ export class RegistrarUsuarioDto {
   @ApiProperty({ example: 'senhaSegura123' })
   @IsString()
   @MinLength(6)
+  @MaxLength(72)
   senha!: string;
 
   @ApiProperty({ enum: PERFIS_DE_FUNCIONARIO, example: PerfilAcesso.ATENDENTE })

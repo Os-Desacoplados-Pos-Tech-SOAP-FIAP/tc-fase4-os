@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AtualizarClienteUseCase } from '../../application/cliente/atualizar-cliente/AtualizarClienteUseCase';
@@ -55,7 +55,7 @@ export class ClienteController {
   @ApiResponse({ status: 200, description: 'Cliente encontrado', type: ClienteResponseDto })
   @ApiResponse({ status: 404, description: 'Cliente não encontrado' })
   @ApiAuthResponses()
-  async getById(@Param('id') id: string): Promise<ClienteResponseDto> {
+  async getById(@Param('id', ParseUUIDPipe) id: string): Promise<ClienteResponseDto> {
     const cliente = await this.buscar.porId(id);
     return ClienteResponseDto.fromDomain(cliente);
   }
@@ -77,7 +77,7 @@ export class ClienteController {
   @ApiAuthResponses()
   @ApiValidationResponses()
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AtualizarClienteDto,
   ): Promise<ClienteResponseDto> {
     const cliente = await this.atualizar.execute({ id, ...dto });

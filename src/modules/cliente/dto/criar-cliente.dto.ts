@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 import { TipoCliente } from '../../../domain/cliente/entities/Cliente';
 
@@ -19,6 +19,7 @@ export class CriarClienteDto {
   @ApiProperty({ example: 'João Silva' })
   @IsString()
   @MinLength(3)
+  @MaxLength(120)
   nome!: string;
 
   @ApiProperty({ example: 'joao@email.com' })
@@ -28,5 +29,6 @@ export class CriarClienteDto {
   @ApiProperty({ example: '(31) 99999-0000', required: false })
   @IsOptional()
   @IsString()
+  @MaxLength(20)
   telefone?: string;
 }

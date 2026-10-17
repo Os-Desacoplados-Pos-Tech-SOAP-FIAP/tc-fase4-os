@@ -68,6 +68,14 @@ describe('AdicionarItemUseCase', () => {
     ).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
   });
 
+  it('OS inexistente → 404 mesmo com o Catalog fora do ar (não consulta o Catalog)', async () => {
+    c.catalogo.fora();
+    await expect(
+      useCase.execute({ osId: '99999999-9999-4999-8999-999999999999', tipo: TipoItemOrcamento.SERVICO, referenciaId: SERVICO_REVISAO, quantidade: 1, autorizacao: TOKEN }),
+    ).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
+    expect(c.catalogo.autorizacoes).toEqual([]);
+  });
+
   it('recusa item depois que o orçamento foi pedido (saga fora do diagnóstico)', async () => {
     const saga = (await c.sagas.buscar(osId))!;
     saga.avancar(EtapaSaga.ORCAMENTO);

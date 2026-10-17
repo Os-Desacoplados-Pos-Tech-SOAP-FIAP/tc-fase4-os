@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AbrirOrdemDeServicoUseCase } from '../../application/ordem-de-servico/abrir-ordem/AbrirOrdemDeServicoUseCase';
@@ -10,6 +10,7 @@ import { ListarOrdensDeServicoUseCase } from '../../application/ordem-de-servico
 import { PerfilAcesso } from '../../common/auth/perfil';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiAuthResponses, ApiValidationResponses } from '../../common/decorators/swagger';
+import { ParseNumeroOsPipe } from '../../common/pipes/parse-numero-os.pipe';
 import { AbrirOrdemDeServicoDto } from './dto/abrir-ordem-de-servico.dto';
 import { AdicionarItemDto } from './dto/adicionar-item.dto';
 import { ListarOrdensQuery } from './dto/listar-ordens.query';
@@ -56,7 +57,8 @@ export class OrdemDeServicoController {
   @Roles(...FUNCIONARIOS)
   @ApiOperation({ summary: 'Consulta a OS pelo número' })
   @ApiResponse({ status: 200, type: OrdemDeServicoResponseDto })
-  async porNumero(@Param('numero', ParseIntPipe) numero: number): Promise<OrdemDeServicoResponseDto> {
+  @ApiResponse({ status: 400, description: 'Número fora de 1..2147483647' })
+  async porNumero(@Param('numero', ParseNumeroOsPipe) numero: number): Promise<OrdemDeServicoResponseDto> {
     return OrdemDeServicoResponseDto.deOrdem(await this.consultar.porNumero(numero));
   }
 

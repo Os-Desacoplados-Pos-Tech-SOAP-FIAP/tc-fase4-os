@@ -108,6 +108,12 @@ describe('Ordens de serviço (e2e)', () => {
     expect(historico.body).toEqual([expect.objectContaining({ de: null, para: 'RECEBIDA', motivo: 'OS aberta' })]);
   });
 
+  it('número de OS fora de 1..2147483647 → 400 (não 500)', async () => {
+    for (const numero of ['0', '2147483648', '99999999999', 'abc']) {
+      await request(app.getHttpServer()).get(`/api/os/ordens-de-servico/numero/${numero}`).set('Authorization', atendente).expect(400);
+    }
+  });
+
   it('entrega só com a OS PAGA; mecânico não entrega', async () => {
     const os = await abrirOs();
     await request(app.getHttpServer()).post(`/api/os/ordens-de-servico/${os.id}/entrega`).set('Authorization', atendente).expect(422);

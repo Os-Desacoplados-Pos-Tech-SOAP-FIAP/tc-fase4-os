@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AtualizarVeiculoUseCase } from '../../application/veiculo/atualizar-veiculo/AtualizarVeiculoUseCase';
@@ -46,7 +46,7 @@ export class VeiculoController {
   @ApiOperation({ summary: 'Lista veículos (opcionalmente filtrados por cliente)' })
   @ApiResponse({ status: 200, description: 'Lista retornada', type: VeiculoResponseDto, isArray: true })
   @ApiAuthResponses()
-  async list(@Query('clienteId') clienteId?: string): Promise<VeiculoResponseDto[]> {
+  async list(@Query('clienteId', new ParseUUIDPipe({ optional: true })) clienteId?: string): Promise<VeiculoResponseDto[]> {
     const veiculos = await this.listar.execute(clienteId);
     return veiculos.map((v) => VeiculoResponseDto.fromDomain(v));
   }
@@ -56,7 +56,7 @@ export class VeiculoController {
   @ApiResponse({ status: 200, description: 'Veículo encontrado', type: VeiculoResponseDto })
   @ApiResponse({ status: 404, description: 'Veículo não encontrado' })
   @ApiAuthResponses()
-  async getById(@Param('id') id: string): Promise<VeiculoResponseDto> {
+  async getById(@Param('id', ParseUUIDPipe) id: string): Promise<VeiculoResponseDto> {
     const veiculo = await this.buscar.porId(id);
     return VeiculoResponseDto.fromDomain(veiculo);
   }
@@ -75,10 +75,11 @@ export class VeiculoController {
   @ApiOperation({ summary: 'Atualiza veículo' })
   @ApiResponse({ status: 200, description: 'Veículo atualizado', type: VeiculoResponseDto })
   @ApiResponse({ status: 404, description: 'Veículo não encontrado' })
+  @ApiResponse({ status: 409, description: 'Placa já cadastrada' })
   @ApiAuthResponses()
   @ApiValidationResponses()
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AtualizarVeiculoDto,
   ): Promise<VeiculoResponseDto> {
     const veiculo = await this.atualizar.execute({ id, ...dto });

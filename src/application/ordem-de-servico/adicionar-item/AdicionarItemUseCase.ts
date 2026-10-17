@@ -37,6 +37,8 @@ export class AdicionarItemUseCase {
   ) {}
 
   async execute(input: AdicionarItemInput): Promise<OrdemComSaga> {
+    // Leitura simples antes do Catalog: OS inexistente é 404 mesmo com o Catalog fora.
+    ensureFound(await this.ordens.buscarPorId(input.osId), 'Ordem de serviço');
     const doCatalogo = await this.buscarNoCatalogo(input);
 
     return this.transacao.run(async () => {

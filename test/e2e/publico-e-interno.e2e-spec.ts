@@ -48,6 +48,15 @@ describe('Rotas pública e interna (e2e)', () => {
     await request(app.getHttpServer()).get(`/api/os/publico/os/${os.body.numero}/status`).expect(401);
   });
 
+  it('status público com número de OS fora do int32 → 400 (não 500)', async () => {
+    for (const numero of ['2147483648', '0']) {
+      await request(app.getHttpServer())
+        .get(`/api/os/publico/os/${numero}/status`)
+        .set('Authorization', token(PerfilAcesso.CLIENTE, randomUUID()))
+        .expect(400);
+    }
+  });
+
   it('endpoint interno devolve o cliente por CPF só com o token interno (E11)', async () => {
     const { clienteId } = await criarClienteComVeiculo(prisma);
     const resposta = await request(app.getHttpServer())
