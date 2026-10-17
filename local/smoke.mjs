@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Smoke do fluxo completo da saga. Uso: node local/smoke.mjs [feliz|a|b|c|d|todos]
-// Base URLs por env (padrão: compose local) para reaproveitar no EKS.
+// Base URLs, origem do token, checagem das DLQs e senhas por env (padrão: compose local) para
+// reaproveitar no EKS. Ver "Rodando o smoke contra o EKS" no local/README.md.
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,15 +15,46 @@ const URL = {
 const CLIENTE_ID = '0c000000-0000-4000-8000-000000000001';
 const VEICULO_ID = '0d000000-0000-4000-8000-000000000001';
 const ESPERA_MS = Number(process.env.SMOKE_TIMEOUT_MS ?? 60000);
+/** De onde vem o log do billing com o token do orçamento: `docker` (compose) ou `kubectl` (EKS). */
+const ORIGEM_TOKEN = escolher('SMOKE_TOKEN_SOURCE', ['docker', 'kubectl']);
+/** Como checar as DLQs no fim: `docker` (awslocal no LocalStack), `aws` (CLI, SMOKE_DLQ_URLS) ou `off`. */
+const CHECAGEM_DLQ = escolher('SMOKE_DLQ_CHECK', ['docker', 'aws', 'off']);
+const DLQ_URLS = (process.env.SMOKE_DLQ_URLS ?? '').split(',').map((url) => url.trim()).filter(Boolean);
+if (CHECAGEM_DLQ === 'aws' && DLQ_URLS.length === 0) {
+  console.error('✘ SMOKE_DLQ_CHECK=aws exige SMOKE_DLQ_URLS (URLs das DLQs separadas por vírgula)');
+  process.exit(1);
+}
+const SENHA = {
+  admin: process.env.SMOKE_SENHA_ADMIN ?? 'admin123',
+  padrao: process.env.SMOKE_SENHA_PADRAO ?? 'senha123',
+};
 /** Pasta do docker-compose.yml: `docker compose` roda daqui (Git Bash no Windows e Linux). */
 const PASTA_COMPOSE = dirname(fileURLToPath(import.meta.url));
 
+/** Valor da env entre as opções; o primeiro é o padrão. */
+function escolher(variavel, opcoes) {
+  const valor = process.env[variavel] || opcoes[0];
+  if (!opcoes.includes(valor)) {
+    console.error(`✘ ${variavel}=${valor} inválido; use ${opcoes.join(' | ')}`);
+    process.exit(1);
+  }
+  return valor;
+}
+
+function executar(comando, args, opcoes = {}) {
+  return execFileSync(comando, args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opcoes });
+}
+
 function compose(...args) {
-  return execFileSync('docker', ['compose', ...args], {
-    cwd: PASTA_COMPOSE,
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-  });
+  return executar('docker', ['compose', ...args], { cwd: PASTA_COMPOSE });
+}
+
+/** Log completo do billing, de onde sai o e-mail simulado com o token. */
+function logsDoBilling() {
+  if (ORIGEM_TOKEN === 'kubectl') {
+    return executar('kubectl', ['logs', '-n', 'billing', 'deploy/billing', '--tail=-1']);
+  }
+  return compose('logs', 'billing');
 }
 
 async function chamar(metodo, url, { token, corpo, esperado = [200, 201] } = {}) {
@@ -86,7 +118,7 @@ function esperarEtapa(ctx, osId, etapa) {
 async function tokenDoOrcamento(numero) {
   const padrao = new RegExp(`orcamentos/${numero}\\?token=([A-Za-z0-9_-]+)`, 'g');
   const achados = await esperar(
-    async () => [...compose('logs', 'billing').matchAll(padrao)],
+    async () => [...logsDoBilling().matchAll(padrao)],
     (lista) => lista.length > 0,
     () => `token do orçamento da OS ${numero} não apareceu no log do billing`,
   );
@@ -290,21 +322,40 @@ const CENARIOS = {
   },
 };
 
+const ARGS_TOTAL_DLQ = [
+  'get-queue-attributes', '--attribute-names', 'ApproximateNumberOfMessages',
+  '--query', 'Attributes.ApproximateNumberOfMessages', '--output', 'text',
+];
+
+/** DLQs a checar, cada uma com um nome curto e o comando que devolve o total de mensagens. */
+function dlqsParaChecar() {
+  if (CHECAGEM_DLQ === 'aws') {
+    const regiao = process.env.AWS_REGION ?? 'us-east-1';
+    return DLQ_URLS.map((url) => ({
+      nome: url.split('/').at(-1),
+      total: () => executar('aws', ['sqs', ...ARGS_TOTAL_DLQ, '--region', regiao, '--queue-url', url]),
+    }));
+  }
+  return ['os', 'catalog', 'billing', 'execution'].map((svc) => ({
+    nome: svc,
+    total: () => compose(
+      'exec', '-T', 'localstack', 'awslocal', 'sqs', ...ARGS_TOTAL_DLQ, '--region', 'us-east-1',
+      '--queue-url', `http://localhost:4566/000000000000/oficina-${svc}-inbox-dlq.fifo`,
+    ),
+  }));
+}
+
 /** Nada pode ter caído em DLQ: o smoke falha se alguma tiver mensagem. */
 function dlqsVazias() {
-  const cheias = ['os', 'catalog', 'billing', 'execution']
-    .map((svc) => {
-      const total = compose(
-        'exec', '-T', 'localstack', 'awslocal', 'sqs', 'get-queue-attributes', '--region', 'us-east-1',
-        '--queue-url', `http://localhost:4566/000000000000/oficina-${svc}-inbox-dlq.fifo`,
-        '--attribute-names', 'ApproximateNumberOfMessages',
-        '--query', 'Attributes.ApproximateNumberOfMessages', '--output', 'text',
-      ).trim();
-      return { svc, total };
-    })
+  if (CHECAGEM_DLQ === 'off') {
+    console.log('- DLQs não checadas (SMOKE_DLQ_CHECK=off)');
+    return;
+  }
+  const cheias = dlqsParaChecar()
+    .map(({ nome, total }) => ({ nome, total: total().trim() }))
     .filter(({ total }) => total !== '0');
   if (cheias.length) {
-    throw new Error(`mensagens em DLQ: ${cheias.map(({ svc, total }) => `${svc}=${total}`).join(', ')}`);
+    throw new Error(`mensagens em DLQ: ${cheias.map(({ nome, total }) => `${nome}=${total}`).join(', ')}`);
   }
   console.log('✔ DLQs vazias');
 }
@@ -312,9 +363,9 @@ function dlqsVazias() {
 async function main() {
   const escolha = process.argv[2] ?? 'todos';
   const ctx = {
-    admin: await login('admin@oficina.local', 'admin123'),
-    atendente: await login('atendente@oficina.local', 'senha123'),
-    mecanico: await login('mecanico@oficina.local', 'senha123'),
+    admin: await login('admin@oficina.local', SENHA.admin),
+    atendente: await login('atendente@oficina.local', SENHA.padrao),
+    mecanico: await login('mecanico@oficina.local', SENHA.padrao),
   };
   await prepararCatalogo(ctx);
   const nomes = escolha === 'todos' ? Object.keys(CENARIOS) : [escolha];

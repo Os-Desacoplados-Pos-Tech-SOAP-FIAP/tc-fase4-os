@@ -38,7 +38,7 @@ O que sobe:
 | `billing` | 3004 | `/api/billing`, com `PAYMENT_PROVIDER=fake` |
 | `postgres` | 5440 | bancos e usuários `catalog`, `billing` e `os` (senha igual ao nome) |
 | `localstack` | 4566 | SQS, SNS e DynamoDB, criados por `localstack/init.sh` |
-| `migrate-*` | — | execução única no estágio `builder` da imagem (a imagem final não tem o Prisma CLI) |
+| `migrate-*` | — | execução única: `migrate-catalog` e `migrate-billing` no estágio `builder`; `migrate-os` na imagem final, como o initContainer do EKS (seed compilado) |
 
 - **`NODE_ENV=production` nos serviços:** com `development`, o logger usa o transport `pino-pretty`. Ele é
   devDependency e não existe na imagem de produção, então o serviço não sobe. Por isso os logs saem em JSON. O
@@ -70,7 +70,43 @@ node local/smoke.mjs todos     # ou: feliz | a | b | c | d
 
 No fim, o smoke falha se houver mensagem em qualquer DLQ. As URLs base vêm de `OS_URL`, `CATALOG_URL`,
 `EXECUTION_URL` e `BILLING_URL`, para reaproveitar no EKS. O prazo de cada espera é `SMOKE_TIMEOUT_MS` (padrão
-60000). O token do orçamento é lido do log do container `billing` (`docker compose logs`).
+60000). O token do orçamento é lido do log do container `billing` (`docker compose logs`). Para rodar contra o EKS,
+veja [Rodando o smoke contra o EKS](#rodando-o-smoke-contra-o-eks).
+
+## Rodando o smoke contra o EKS
+
+O mesmo `smoke.mjs` roda contra o cluster, com o Billing em `PAYMENT_PROVIDER=fake` (a rota
+`/api/billing/dev/pagamentos/:osId/simular` responde 404 com `mercadopago`). Pré-requisitos: os 4 serviços implantados,
+`kubectl` apontando para o cluster (`aws eks update-kubeconfig --name oficina-fase4 --region us-east-1`) e a AWS CLI
+com permissão de leitura nas DLQs e nos segredos do seed.
+
+| Variável | Local (padrão) | EKS |
+|---|---|---|
+| `OS_URL`, `CATALOG_URL`, `EXECUTION_URL`, `BILLING_URL` | `http://localhost:300{1..4}/api/<svc>` | `<public_base_url>/api/<svc>` (output da infra) |
+| `SMOKE_TOKEN_SOURCE` | `docker` (`docker compose logs billing`) | `kubectl` (`kubectl logs -n billing deploy/billing --tail=-1`) |
+| `SMOKE_DLQ_CHECK` | `docker` (`awslocal` no LocalStack) | `aws` (`aws sqs get-queue-attributes`), ou `off` para não checar |
+| `SMOKE_DLQ_URLS` | — | URLs das 4 DLQs, separadas por vírgula (output `dlq_url` de cada Terraform) |
+| `SMOKE_SENHA_ADMIN` | `admin123` | segredo `oficina-fase4/os/SEED_SENHA_ADMIN` |
+| `SMOKE_SENHA_PADRAO` | `senha123` | segredo `oficina-fase4/os/SEED_SENHA_PADRAO` (atendente e mecânico) |
+| `SMOKE_TIMEOUT_MS` | `60000` | aumente se a fila estiver lenta |
+
+```bash
+BASE=$(terraform -chdir=../tc-fase4-infra output -raw public_base_url)
+dlq() { terraform -chdir="../tc-fase4-$1/terraform" output -raw dlq_url; }
+segredo() { aws secretsmanager get-secret-value --secret-id "oficina-fase4/os/$1" --query SecretString --output text; }
+
+export OS_URL=$BASE/api/os CATALOG_URL=$BASE/api/catalog EXECUTION_URL=$BASE/api/execution BILLING_URL=$BASE/api/billing
+export SMOKE_TOKEN_SOURCE=kubectl SMOKE_DLQ_CHECK=aws
+export SMOKE_DLQ_URLS="$(dlq os),$(dlq catalog),$(dlq billing),$(dlq execution)"
+export SMOKE_SENHA_ADMIN="$(segredo SEED_SENHA_ADMIN)" SMOKE_SENHA_PADRAO="$(segredo SEED_SENHA_PADRAO)"
+
+for cenario in feliz a b d; do node local/smoke.mjs "$cenario" || break; done
+```
+
+Rode a partir de `tc-fase4-os`, com os repositórios lado a lado e o `terraform init` feito em cada um. As senhas
+ficam só no ambiente do terminal: não grave em arquivo. O cenário `c` supõe uma vaga só
+(`EXECUTION_MAX_CONCURRENT=1`); no EKS o Execution sobe com `3`, a segunda OS é aceita e o `c` falha. Para rodá-lo lá,
+baixe a variável para `1` no ConfigMap `execution-config` e reinicie o Deployment do Execution antes.
 
 ## Roteiro manual
 
@@ -111,5 +147,6 @@ Apaga os bancos, as filas e a tabela. É necessário se um smoke abortar no meio
 
 - 3 RDS (um por serviço), não um Postgres com 3 bancos.
 - Mercado Pago real (`PAYMENT_PROVIDER=mercadopago`, credenciais no Secrets Manager), não o gateway fake.
-- Topologia SNS/SQS, assinaturas e tabela DynamoDB criadas pelo Terraform da infra, não pelo `init.sh`.
-- Migrações por job no cluster (Etapa 8), não pelos serviços `migrate-*`.
+- Topologia SNS/SQS e tabela DynamoDB criadas pelo Terraform de cada serviço; as assinaturas dos tópicos na fila do
+  OS, pelo Terraform do OS. Não há o `init.sh` nem as filas `*-events-spy.fifo`.
+- Migrações pelo initContainer `prisma-migrate` e seed pelo CD (`kubectl exec`), não pelos serviços `migrate-*`.
