@@ -19,8 +19,9 @@ cat > "$DESTINO/README.md" <<'EOF'
 # Collection Postman (cópia)
 
 Esta pasta é uma **cópia**. A fonte é [`tc-fase4-os/postman`](https://github.com/Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-os/tree/main/postman),
-onde estão as instruções de uso (ambientes, ordem, token do orçamento e newman). Não edite aqui: altere no
-`tc-fase4-os` e rode `postman/sincronizar-docs.sh`.
+onde estão as instruções de uso (ambientes, ordem, token do orçamento e newman). Os JSON são gerados: não edite
+aqui. Altere o `postman/gerar-collection.mjs` do `tc-fase4-os`, rode `node postman/gerar-collection.mjs` e depois
+`postman/sincronizar-docs.sh`.
 
 | Arquivo | Conteúdo |
 |---|---|

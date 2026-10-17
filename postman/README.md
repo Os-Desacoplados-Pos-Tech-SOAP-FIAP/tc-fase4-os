@@ -9,7 +9,21 @@ Ela segue a mesma ordem do [`local/oficina-fase4.http`](../local/oficina-fase4.h
 | `oficina-fase4.postman_collection.json` | Collection (schema v2.1) |
 | `local.postman_environment.json` | Compose local (`local/`), portas 3001 a 3004 |
 | `eks.postman_environment.json` | EKS atrás do API Gateway (placeholders) |
+| `gerar-collection.mjs` | Gerador dos três JSON acima (fonte de verdade) |
 | `sincronizar-docs.sh` | Copia os JSON para `../tc-fase4-docs/postman/` |
+
+## Os JSON são gerados
+
+A collection e os ambientes são saída do `gerar-collection.mjs`. Não edite os JSON à mão (nem pelo Postman, com
+exportação): a próxima geração sobrescreve. Para alterar, na raiz do repositório:
+
+```bash
+# 1. edite postman/gerar-collection.mjs
+node postman/gerar-collection.mjs     # regera os três JSON nesta pasta
+./postman/sincronizar-docs.sh         # atualiza a cópia em ../tc-fase4-docs/postman/
+```
+
+Versione o gerador e os JSON regerados no mesmo commit.
 
 ## Importar
 
@@ -96,4 +110,4 @@ No EKS, use `-e postman/eks.postman_environment.json` com as URLs e as senhas pr
 ## Cópia no repositório de docs
 
 `./postman/sincronizar-docs.sh` copia os JSON para `../tc-fase4-docs/postman/` com um README que aponta para esta
-pasta como fonte. A fonte de verdade é esta pasta: edite aqui e sincronize.
+pasta como fonte. A fonte de verdade é o `gerar-collection.mjs`: edite, regere e sincronize.
