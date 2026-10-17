@@ -1,4 +1,5 @@
 import { ArgumentsHost, BadRequestException, HttpException, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 import {
   CatalogoIndisponivelError,
@@ -79,6 +80,32 @@ describe('AllExceptionsFilter', () => {
       code: 'CREDENCIAIS_INVALIDAS',
       message: 'Credenciais inválidas',
     });
+  });
+
+  it('violação de unicidade do Prisma (P2002) vira 409 sem detalhes do banco', () => {
+    const { host, response } = criarHost();
+    filtro.catch(
+      new Prisma.PrismaClientKnownRequestError('x', { code: 'P2002', clientVersion: 'teste', meta: { target: ['placa'] } }),
+      host,
+    );
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 409,
+      error: 'Conflict',
+      code: 'REGISTRO_DUPLICADO',
+      message: 'Registro já existe',
+    });
+  });
+
+  it('outro erro conhecido do Prisma segue como 500 genérico', () => {
+    const { host, response } = criarHost();
+    const spy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      filtro.catch(new Prisma.PrismaClientKnownRequestError('x', { code: 'P2025', clientVersion: 'teste' }), host);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(response.status).toHaveBeenCalledWith(500);
   });
 
   it('HttpException com corpo objeto repassa o corpo', () => {

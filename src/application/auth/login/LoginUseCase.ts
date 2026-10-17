@@ -7,6 +7,12 @@ import { IUsuarioRepository } from '../../../domain/auth/repositories/IUsuarioRe
 import { CredenciaisInvalidasError } from '../../errors';
 import { IHashProvider } from '../../ports/hash-provider';
 
+/**
+ * Hash bcrypt (custo 12) de uma string descartável, comparado quando o usuário não existe ou está
+ * inativo: o login leva o mesmo tempo nos dois casos (evita enumeração de e-mails por tempo).
+ */
+const HASH_DE_MENTIRA = '$2a$12$cO7OiavD1GyixVwt9y22oec0V1ZvnaQ9z6OicbZWZszzMBML30L96';
+
 export interface LoginResult {
   accessToken: string;
   usuario: { id: string; nome: string; email: string; perfil: PerfilAcesso };
@@ -25,8 +31,10 @@ export class LoginUseCase {
 
   async execute(email: string, senha: string): Promise<LoginResult> {
     const usuario = await this.usuarios.buscarPorEmail(email);
-    const senhaConfere = usuario?.ativo === true && (await this.hash.compare(senha, usuario.senha));
-    if (!usuario || !senhaConfere) throw new CredenciaisInvalidasError();
+    const podeEntrar = usuario?.ativo === true;
+    // Compara sempre (com o hash de mentira se preciso) para o tempo não revelar se o e-mail existe.
+    const senhaConfere = await this.hash.compare(senha, podeEntrar ? usuario.senha : HASH_DE_MENTIRA);
+    if (!usuario || !podeEntrar || !senhaConfere) throw new CredenciaisInvalidasError();
 
     const id = usuario.id.toValue();
     return {

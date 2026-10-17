@@ -27,9 +27,9 @@ export function criarCenario() {
   const outbox = new InMemoryOutbox();
   const clientes = new InMemoryClienteRepository();
   const veiculos = new InMemoryVeiculoRepository();
-  const trava = new FakeTravaPorOs();
   const catalogo = new CatalogoEmMemoria();
   const transacao = new FakeTransactionManager().participar(ordens, sagas, processadas, outbox);
+  const trava = new FakeTravaPorOs(transacao);
 
   async function clienteComVeiculoDe(
     documento: string,

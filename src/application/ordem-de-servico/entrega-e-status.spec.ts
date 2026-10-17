@@ -42,6 +42,12 @@ describe('entrega e status público', () => {
     expect(c.trava.travadas).toEqual([osId]);
   });
 
+  it('a trava falsa só aceita ser chamada dentro da transação', async () => {
+    await expect(c.trava.travar(osId)).rejects.toThrow('fora da transação');
+    await expect(c.transacao.run(() => c.trava.travar(osId))).resolves.toBeUndefined();
+    expect(c.transacao.ativa).toBe(false);
+  });
+
   it('não entrega antes de PAGA', async () => {
     await expect(new EntregarVeiculoUseCase(c.transacao, c.trava, c.ordens).execute(osId)).rejects.toEqual(
       expect.objectContaining({ code: 'OS_TRANSICAO_INVALIDA' }),

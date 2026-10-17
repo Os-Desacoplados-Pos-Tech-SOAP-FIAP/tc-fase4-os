@@ -38,5 +38,13 @@ describe('CadastrarClienteUseCase', () => {
         email: 'outra@email.com',
       }),
     ).rejects.toBeInstanceOf(ConflitoError);
+    await expect(
+      useCase.execute({
+        tipo: TipoCliente.PF,
+        documento: '529.982.247-25',
+        nome: 'Outra Pessoa',
+        email: 'outra@email.com',
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code: 'DOCUMENTO_JA_CADASTRADO' }));
   });
 });

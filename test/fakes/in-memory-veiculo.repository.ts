@@ -12,7 +12,9 @@ export class InMemoryVeiculoRepository implements IVeiculoRepository {
     return this.veiculos.find((v) => v.id.equals(id)) ?? null;
   }
   async buscarPorPlaca(placa: string): Promise<Veiculo | null> {
-    return this.veiculos.find((v) => v.placa.value === placa) ?? null;
+    // Mesma normalização do PrismaVeiculoRepository: maiúsculas, sem hífen nem espaços.
+    const normalizada = placa.toUpperCase().replace(/[-\s]/g, '');
+    return this.veiculos.find((v) => v.placa.value === normalizada) ?? null;
   }
   async listar(): Promise<Veiculo[]> {
     return this.veiculos;

@@ -51,4 +51,22 @@ describe('LoginUseCase', () => {
     await usuarios.salvar(inativo);
     await expect(useCase.execute('bia@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
   });
+
+  it('compara a senha mesmo com e-mail inexistente ou usuário inativo (tempo constante)', async () => {
+    const compare = jest.spyOn(hashFalso, 'compare');
+    try {
+      await usuarios.salvar(
+        Usuario.restaurar(
+          { nome: 'Bia', email: 'bia@oficina.local', senha: 'hash:senha123', perfil: PerfilAcesso.MECANICO, ativo: false },
+          new UniqueID(),
+        ),
+      );
+      await expect(useCase.execute('ninguem@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
+      await expect(useCase.execute('bia@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
+      expect(compare).toHaveBeenCalledTimes(2);
+      expect(compare.mock.calls.every(([plain, hashed]) => plain === 'senha123' && hashed.startsWith('$2'))).toBe(true);
+    } finally {
+      compare.mockRestore();
+    }
+  });
 });

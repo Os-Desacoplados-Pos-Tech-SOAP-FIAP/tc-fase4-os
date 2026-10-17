@@ -5,6 +5,8 @@ import { ensureFound } from '../../ensure-found';
 import { UniqueID } from '../../../domain/shared/UniqueID';
 import { Veiculo } from '../../../domain/veiculo/entities/Veiculo';
 import { IVeiculoRepository } from '../../../domain/veiculo/repositories/IVeiculoRepository';
+import { Placa } from '../../../domain/veiculo/value-objects/Placa';
+import { ConflitoError } from '../../errors';
 
 interface AtualizarVeiculoInput {
   id: string;
@@ -26,6 +28,12 @@ export class AtualizarVeiculoUseCase {
       await this.veiculoRepository.buscarPorId(new UniqueID(input.id)),
       'Veículo',
     );
+    if (input.placa !== undefined) {
+      const dono = await this.veiculoRepository.buscarPorPlaca(Placa.create(input.placa).value);
+      if (dono && !dono.id.equals(veiculo.id)) {
+        throw new ConflitoError('Placa já cadastrada', 'PLACA_JA_CADASTRADA');
+      }
+    }
     veiculo.atualizar(input);
     await this.veiculoRepository.salvar(veiculo);
     return veiculo;

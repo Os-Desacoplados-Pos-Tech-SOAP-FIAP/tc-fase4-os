@@ -8,6 +8,12 @@ export interface ParticipanteTransacao {
 export class FakeTransactionManager implements ITransactionManager {
   private readonly participantes: ParticipanteTransacao[] = [];
   public execucoes = 0;
+  private profundidade = 0;
+
+  /** Há um `run` em andamento (inclusive aninhado). */
+  get ativa(): boolean {
+    return this.profundidade > 0;
+  }
 
   participar(...participantes: ParticipanteTransacao[]): this {
     this.participantes.push(...participantes);
@@ -16,12 +22,15 @@ export class FakeTransactionManager implements ITransactionManager {
 
   async run<T>(work: () => Promise<T>): Promise<T> {
     this.execucoes++;
+    this.profundidade++;
     const estados = this.participantes.map((p) => p.snapshot());
     try {
       return await work();
     } catch (erro) {
       this.participantes.forEach((p, i) => p.restaurar(estados[i]));
       throw erro;
+    } finally {
+      this.profundidade--;
     }
   }
 }

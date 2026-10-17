@@ -34,5 +34,7 @@ describe('CadastrarVeiculoUseCase', () => {
     await useCase.execute({ placa: 'ABC1234', marca: 'Toyota', modelo: 'Corolla', ano: 2020, clienteId: cliente.id.toValue() });
     await expect(useCase.execute({ placa: 'ABC1234', marca: 'Honda', modelo: 'Civic', ano: 2021, clienteId: cliente.id.toValue() }))
       .rejects.toBeInstanceOf(ConflitoError);
+    await expect(useCase.execute({ placa: 'abc-1234', marca: 'Honda', modelo: 'Civic', ano: 2021, clienteId: cliente.id.toValue() }))
+      .rejects.toEqual(expect.objectContaining({ code: 'PLACA_JA_CADASTRADA' }));
   });
 });

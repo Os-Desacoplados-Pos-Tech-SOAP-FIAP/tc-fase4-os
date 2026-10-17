@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Response } from 'express';
 
 import {
@@ -44,6 +45,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof CatalogoIndisponivelError) {
       this.responderComCode(response, 503, 'Service Unavailable', exception);
+      return;
+    }
+
+    // Corrida que passou pela checagem prévia e bateu no índice único: 409 sem vazar tabela/coluna.
+    if (exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === 'P2002') {
+      this.responderComCode(response, 409, 'Conflict', { code: 'REGISTRO_DUPLICADO', message: 'Registro já existe' });
       return;
     }
 
