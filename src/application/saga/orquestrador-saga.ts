@@ -16,7 +16,7 @@ import { IProcessedMessageRepository } from '../ports/processed-message.reposito
 import { ITransactionManager } from '../ports/transaction-manager';
 import { ITravaPorOs } from '../ports/trava-por-os';
 import { ComandoSaga, comandos, enviarComandos } from './comandos-saga';
-import { OrcamentoEnviadoLido } from './saga-messages';
+import { CobrancaGeradaLida, FalhaLida, OrcamentoEnviadoLido } from './saga-messages';
 
 export interface ContextoEvento extends ContextoMensagem {
   /** Tipo do evento recebido (só para log). */
@@ -110,6 +110,82 @@ export class OrquestradorSaga {
       if (!this.aguardandoDecisao(os, saga)) return IGNORADO;
       os.reprovarOrcamento(motivo);
       saga.avancar(EtapaSaga.ENCERRADA);
+      return NENHUM;
+    });
+  }
+
+  // ── Reserva (Catalog) e pivô (Execution) ────────────────────────────────
+
+  /** Passo 6: com os insumos reservados, pede a execução (pivô). */
+  insumosReservados(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ os, saga }) => {
+      if (saga.em(EtapaSaga.RESERVA)) {
+        saga.avancar(EtapaSaga.EXECUCAO_SOLICITADA);
+        return [comandos.enfileirarExecucao(os)];
+      }
+      if (saga.terminada) {
+        // Reserva atrasada com a saga já encerrada: devolve o estoque (sem reserva órfã).
+        this.logger.warn({ msg: 'Reserva recebida com a saga encerrada; liberando', osId: ctx.correlationId, etapa: saga.etapa });
+        return [comandos.liberarReservas()];
+      }
+      return IGNORADO;
+    });
+  }
+
+  /** Passo 7: pivô atingido; daqui em diante não há compensação. */
+  execucaoAceita(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ saga }) => {
+      if (!saga.em(EtapaSaga.EXECUCAO_SOLICITADA)) return IGNORADO;
+      saga.avancar(EtapaSaga.EXECUCAO);
+      return NENHUM;
+    });
+  }
+
+  // ── Execução (Execution) ────────────────────────────────────────────────
+
+  reparoIniciado(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ os, saga }) => {
+      if (!saga.em(EtapaSaga.EXECUCAO) || os.status !== StatusOS.APROVADA) return IGNORADO;
+      os.iniciarExecucao();
+      return NENHUM;
+    });
+  }
+
+  /** Passo 9: baixa do estoque e cobrança saem juntas (só retentativa, pós-pivô). */
+  execucaoConcluida(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ os, saga }) => {
+      if (!saga.em(EtapaSaga.EXECUCAO) || os.status !== StatusOS.EM_EXECUCAO) return IGNORADO;
+      os.finalizarExecucao();
+      saga.avancar(EtapaSaga.COBRANCA);
+      return [comandos.baixarReservas(), comandos.gerarCobranca()];
+    });
+  }
+
+  // ── Cobrança (Billing) ──────────────────────────────────────────────────
+
+  cobrancaGerada(ctx: ContextoEvento, dados: CobrancaGeradaLida): Promise<void> {
+    return this.processar(ctx, ({ os }) => {
+      if (os.status !== StatusOS.FINALIZADA) return IGNORADO; // PAGA: link antigo, ignora
+      os.registrarCobranca(dados.initPoint);
+      return NENHUM;
+    });
+  }
+
+  /** Recusa gera nova cobrança com messageId novo (E8, D6 da Etapa 4). */
+  pagamentoRecusado(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
+    return this.processar(ctx, ({ os }) => {
+      if (os.status !== StatusOS.FINALIZADA) return IGNORADO;
+      os.registrarPagamentoRecusado(falha.motivo);
+      return [comandos.gerarCobranca()];
+    });
+  }
+
+  /** Passo 10. Com D7 da Etapa 4 podem chegar duas confirmações: a segunda é ignorada. */
+  pagamentoConfirmado(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ os, saga }) => {
+      if (os.status !== StatusOS.FINALIZADA || !saga.em(EtapaSaga.COBRANCA)) return IGNORADO;
+      os.confirmarPagamento();
+      saga.avancar(EtapaSaga.CONCLUIDA);
       return NENHUM;
     });
   }
