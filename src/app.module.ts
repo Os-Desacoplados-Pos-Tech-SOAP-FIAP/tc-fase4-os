@@ -15,6 +15,7 @@ import { HealthModule } from './modules/health/health.module';
 import { InternoModule } from './modules/interno/interno.module';
 import { OrdemDeServicoModule } from './modules/ordem-de-servico/ordem-de-servico.module';
 import { PublicoModule } from './modules/publico/publico.module';
+import { SagaModule } from './modules/saga/saga.module';
 import { VeiculoModule } from './modules/veiculo/veiculo.module';
 
 @Module({
@@ -51,6 +52,7 @@ import { VeiculoModule } from './modules/veiculo/veiculo.module';
     OrdemDeServicoModule,
     PublicoModule,
     InternoModule,
+    SagaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
