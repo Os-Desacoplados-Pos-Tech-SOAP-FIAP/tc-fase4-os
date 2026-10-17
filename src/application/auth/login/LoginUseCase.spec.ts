@@ -54,6 +54,7 @@ describe('LoginUseCase', () => {
 
   it('compara a senha mesmo com e-mail inexistente ou usuário inativo (tempo constante)', async () => {
     const compare = jest.spyOn(hashFalso, 'compare');
+    const hash = jest.spyOn(hashFalso, 'hash');
     try {
       await usuarios.salvar(
         Usuario.restaurar(
@@ -64,9 +65,16 @@ describe('LoginUseCase', () => {
       await expect(useCase.execute('ninguem@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
       await expect(useCase.execute('bia@oficina.local', 'senha123')).rejects.toBeInstanceOf(CredenciaisInvalidasError);
       expect(compare).toHaveBeenCalledTimes(2);
-      expect(compare.mock.calls.every(([plain, hashed]) => plain === 'senha123' && hashed.startsWith('$2'))).toBe(true);
+      // O hash de mentira vem do próprio provedor (sem hash fixo no código) e é gerado uma vez só.
+      expect(hash).toHaveBeenCalledTimes(1);
+      const hashDeMentira = await hash.mock.results[0].value;
+      expect(compare.mock.calls).toEqual([
+        ['senha123', hashDeMentira],
+        ['senha123', hashDeMentira],
+      ]);
     } finally {
       compare.mockRestore();
+      hash.mockRestore();
     }
   });
 });
