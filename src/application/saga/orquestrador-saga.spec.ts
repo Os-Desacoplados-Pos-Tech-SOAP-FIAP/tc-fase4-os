@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
+import { Logger } from '@nestjs/common';
+
 import { INSUMO_FILTRO } from '../../../test/fakes/catalogo-em-memoria';
 import { Cenario, criarCenario } from '../../../test/fakes/cenario';
-import { contexto, criarOrquestrador, incluirItens, INSUMO, osAberta, SERVICO } from '../../../test/fakes/saga';
+import { contexto, criarOrquestrador, incluirItens, INSUMO, osAberta, SERVICO, versoes } from '../../../test/fakes/saga';
 import { NovoItemOrcamento } from '../../domain/ordem-de-servico/entities/ItemOrcamento';
+import { OrdemDeServico } from '../../domain/ordem-de-servico/entities/OrdemDeServico';
 import { StatusOS } from '../../domain/ordem-de-servico/StatusOS';
 import { EtapaSaga } from '../../domain/saga/SagaInstance';
 import { RecursoNaoEncontradoError } from '../errors';
@@ -13,16 +16,20 @@ describe('OrquestradorSaga — diagnóstico e orçamento', () => {
   let c: Cenario;
   let orq: OrquestradorSaga;
   let osId: string;
+  let warn: jest.SpyInstance;
 
   const status = async () => (await c.ordens.buscarPorId(osId))!.status;
   const etapa = async () => (await c.sagas.buscar(osId))!.etapa;
 
   beforeEach(async () => {
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     c = criarCenario();
     orq = criarOrquestrador(c);
     osId = await osAberta(c);
     c.outbox.enviadas = [];
   });
+
+  afterEach(() => warn.mockRestore());
 
   describe('diagnostico-iniciado', () => {
     it('leva a OS para EM_DIAGNOSTICO travando a OS', async () => {
@@ -32,11 +39,18 @@ describe('OrquestradorSaga — diagnóstico e orçamento', () => {
       expect(c.outbox.enviadas).toEqual([]);
     });
 
-    it('repetido (reabertura) não muda nada nem gera histórico novo', async () => {
+    it('repetido (reabertura) não grava OS nem saga, não gera histórico e não loga warn', async () => {
       await orq.diagnosticoIniciado(contexto(osId));
-      await orq.diagnosticoIniciado(contexto(osId));
+      const antes = await versoes(c, osId);
+      const ctx = contexto(osId);
+
+      await orq.diagnosticoIniciado(ctx);
+
       expect(await status()).toBe(StatusOS.EM_DIAGNOSTICO);
       expect(await c.ordens.historico(osId)).toHaveLength(2);
+      expect(await versoes(c, osId)).toEqual(antes);
+      expect(c.processadas.ids.has(ctx.messageId)).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('mesma mensagem duas vezes é processada uma vez só', async () => {
@@ -48,6 +62,21 @@ describe('OrquestradorSaga — diagnóstico e orçamento', () => {
 
     it('OS inexistente → erro (retentativa e DLQ)', async () => {
       await expect(orq.diagnosticoIniciado(contexto(randomUUID()))).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
+      expect(c.processadas.ids.size).toBe(0);
+    });
+
+    it('saga inexistente → erro (retentativa e DLQ)', async () => {
+      const { cliente, veiculo } = await c.clienteComVeiculoDe('111.444.777-35', 'XYZ9A87');
+      const semSaga = OrdemDeServico.abrir({
+        numero: await c.ordens.proximoNumero(),
+        clienteId: cliente.id.toValue(),
+        veiculoId: veiculo.id.toValue(),
+      });
+      await c.ordens.salvar(semSaga);
+
+      await expect(orq.diagnosticoIniciado(contexto(semSaga.id.toValue()))).rejects.toBeInstanceOf(
+        RecursoNaoEncontradoError,
+      );
       expect(c.processadas.ids.size).toBe(0);
     });
   });
@@ -113,13 +142,20 @@ describe('OrquestradorSaga — diagnóstico e orçamento', () => {
       c.outbox.enviadas = [];
     });
 
-    it('orcamento-enviado: AGUARDANDO_APROVACAO com valor e validade; repetido não muda nada', async () => {
+    it('orcamento-enviado: AGUARDANDO_APROVACAO com valor e validade; repetido não grava nem loga warn', async () => {
       await orq.orcamentoEnviado(contexto(osId), enviado);
-      await orq.orcamentoEnviado(contexto(osId), enviado);
+      const antes = await versoes(c, osId);
+      const ctx = contexto(osId);
+
+      await orq.orcamentoEnviado(ctx, enviado);
+
       const os = (await c.ordens.buscarPorId(osId))!;
       expect(os.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
       expect(os.orcamento).toEqual({ valor: 321, validoAte: new Date(enviado.validoAte) });
       expect((await c.ordens.historico(osId)).filter((r) => r.para === StatusOS.AGUARDANDO_APROVACAO)).toHaveLength(1);
+      expect(await versoes(c, osId)).toEqual(antes);
+      expect(c.processadas.ids.has(ctx.messageId)).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('orcamento-aprovado: APROVADA, saga RESERVA e reservar-insumos só com os insumos', async () => {
@@ -145,10 +181,30 @@ describe('OrquestradorSaga — diagnóstico e orçamento', () => {
       expect(c.outbox.enviadas).toEqual([]);
     });
 
-    it('aprovação antes do envio registrado é ignorada', async () => {
-      await orq.orcamentoAprovado(contexto(osId));
+    it('aprovação antes do envio registrado é ignorada: não grava, registra a mensagem e loga warn', async () => {
+      const antes = await versoes(c, osId);
+      const ctx = contexto(osId, 'billing.orcamento-aprovado.v1');
+
+      await orq.orcamentoAprovado(ctx);
+
       expect(await status()).toBe(StatusOS.EM_DIAGNOSTICO);
       expect(await etapa()).toBe(EtapaSaga.ORCAMENTO);
+      expect(await versoes(c, osId)).toEqual(antes);
+      expect(c.outbox.enviadas).toEqual([]);
+      expect(c.processadas.ids.has(ctx.messageId)).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'billing.orcamento-aprovado.v1', messageId: ctx.messageId, osId }),
+      );
+    });
+
+    it('reprovação fora de AGUARDANDO_APROVACAO é ignorada', async () => {
+      const antes = await versoes(c, osId);
+
+      await orq.orcamentoReprovado(contexto(osId), 'Cliente recusou');
+
+      expect(await status()).toBe(StatusOS.EM_DIAGNOSTICO);
+      expect(await etapa()).toBe(EtapaSaga.ORCAMENTO);
+      expect(await versoes(c, osId)).toEqual(antes);
     });
   });
 });

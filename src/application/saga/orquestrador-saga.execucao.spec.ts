@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import { Cenario, criarCenario } from '../../../test/fakes/cenario';
 import { StatusOS } from '../../domain/ordem-de-servico/StatusOS';
 import { EtapaSaga } from '../../domain/saga/SagaInstance';
@@ -10,6 +12,7 @@ describe('OrquestradorSaga — reserva, pivô, execução e cobrança', () => {
   let c: Cenario;
   let orq: OrquestradorSaga;
   let osId: string;
+  let warn: jest.SpyInstance;
 
   const status = async () => (await c.ordens.buscarPorId(osId))!.status;
   const etapa = async () => (await c.sagas.buscar(osId))!.etapa;
@@ -30,16 +33,21 @@ describe('OrquestradorSaga — reserva, pivô, execução e cobrança', () => {
   }
 
   beforeEach(async () => {
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     c = criarCenario();
     orq = criarOrquestrador(c);
     osId = await osAberta(c);
   });
 
+  afterEach(() => warn.mockRestore());
+
   it('insumos-reservados: pede a execução (pivô) só com os serviços', async () => {
     await aprovada();
     c.outbox.enviadas = [];
-    await orq.insumosReservados(contexto(osId));
+    const ctx = contexto(osId);
+    await orq.insumosReservados(ctx);
     expect(await etapa()).toBe(EtapaSaga.EXECUCAO_SOLICITADA);
+    expect(c.outbox.ultima().envelope.causationId).toBe(ctx.messageId);
     expect(c.outbox.ultima().destino).toBe('fila-execution');
     expect(c.outbox.ultima().envelope.type).toBe('execution.enfileirar-execucao.v1');
     expect(c.outbox.ultima().envelope.payload).toEqual({

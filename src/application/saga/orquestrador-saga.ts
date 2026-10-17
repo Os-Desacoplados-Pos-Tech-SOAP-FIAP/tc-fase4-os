@@ -16,6 +16,7 @@ import { IProcessedMessageRepository } from '../ports/processed-message.reposito
 import { ITransactionManager } from '../ports/transaction-manager';
 import { ITravaPorOs } from '../ports/trava-por-os';
 import { ComandoSaga, comandos, enviarComandos } from './comandos-saga';
+import { codigoDoMotivoTecnico, motivoParaCliente, motivoTecnico } from './motivo-compensacao';
 import { CobrancaGeradaLida, FalhaLida, OrcamentoEnviadoLido } from './saga-messages';
 
 export interface ContextoEvento extends ContextoMensagem {
@@ -31,7 +32,13 @@ interface EstadoDaSaga {
 /** Evento fora da etapa esperada: nada é gravado além do registro de idempotência (E7). */
 const IGNORADO = Symbol('ignorado');
 
-type Decisao = ComandoSaga[] | typeof IGNORADO;
+/** Evento repetido sem efeito (ex.: diagnóstico já iniciado): nada é gravado e não há warn. */
+const SEM_MUDANCA = Symbol('sem-mudanca');
+
+/** Etapas antes do pivô em que a saga já terminou: reserva atrasada ainda pode ser devolvida. */
+const TERMINADA_ANTES_DO_PIVO: readonly EtapaSaga[] = [EtapaSaga.ENCERRADA, EtapaSaga.COMPENSADA];
+
+type Decisao = ComandoSaga[] | typeof IGNORADO | typeof SEM_MUDANCA;
 
 const NENHUM: ComandoSaga[] = [];
 
@@ -62,8 +69,7 @@ export class OrquestradorSaga {
   diagnosticoIniciado(ctx: ContextoEvento): Promise<void> {
     return this.processar(ctx, ({ os }) => {
       if (os.status !== StatusOS.RECEBIDA && os.status !== StatusOS.EM_DIAGNOSTICO) return IGNORADO;
-      os.iniciarDiagnostico(); // repetido (reabertura) não muda nada
-      return NENHUM;
+      return os.iniciarDiagnostico() ? NENHUM : SEM_MUDANCA; // repetido (reabertura)
     });
   }
 
@@ -89,8 +95,7 @@ export class OrquestradorSaga {
     return this.processar(ctx, ({ os, saga }) => {
       const aguardando = os.status === StatusOS.EM_DIAGNOSTICO || os.status === StatusOS.AGUARDANDO_APROVACAO;
       if (!saga.em(EtapaSaga.ORCAMENTO) || !aguardando) return IGNORADO;
-      os.registrarOrcamentoEnviado(dados.valorTotal, new Date(dados.validoAte));
-      return NENHUM;
+      return os.registrarOrcamentoEnviado(dados.valorTotal, new Date(dados.validoAte)) ? NENHUM : SEM_MUDANCA;
     });
   }
 
@@ -123,9 +128,15 @@ export class OrquestradorSaga {
         saga.avancar(EtapaSaga.EXECUCAO_SOLICITADA);
         return [comandos.enfileirarExecucao(os)];
       }
-      if (saga.terminada) {
-        // Reserva atrasada com a saga já encerrada: devolve o estoque (sem reserva órfã).
-        this.logger.warn({ msg: 'Reserva recebida com a saga encerrada; liberando', osId: ctx.correlationId, etapa: saga.etapa });
+      if (saga.em(...TERMINADA_ANTES_DO_PIVO)) {
+        // Reserva atrasada com a saga encerrada antes do pivô: devolve o estoque (sem reserva órfã).
+        this.logger.warn({
+          msg: 'Reserva recebida com a saga encerrada; liberando',
+          type: ctx.tipo,
+          messageId: ctx.messageId,
+          osId: ctx.correlationId,
+          etapa: saga.etapa,
+        });
         return [comandos.liberarReservas()];
       }
       return IGNORADO;
@@ -147,9 +158,8 @@ export class OrquestradorSaga {
   reservaFalhou(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.RESERVA)) return IGNORADO;
-      const motivo = `Reserva de insumos falhou: ${descrever(falha)}`;
-      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, motivo);
-      return [comandos.cancelarOrcamento(motivo)];
+      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, motivoTecnico('Reserva de insumos falhou', falha));
+      return [comandos.cancelarOrcamento(motivoParaCliente(falha.motivo))];
     });
   }
 
@@ -157,7 +167,7 @@ export class OrquestradorSaga {
   execucaoRecusada(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.EXECUCAO_SOLICITADA)) return IGNORADO;
-      saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, `Execução recusada: ${descrever(falha)}`);
+      saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, motivoTecnico('Execução recusada', falha));
       return [comandos.liberarReservas()];
     });
   }
@@ -166,7 +176,7 @@ export class OrquestradorSaga {
     return this.processar(ctx, ({ saga }) => {
       if (!saga.em(EtapaSaga.COMPENSANDO_RESERVAS)) return IGNORADO;
       saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
-      return [comandos.cancelarOrcamento(motivoDaCompensacao(saga))];
+      return [comandos.cancelarOrcamento(motivoParaCliente(codigoDoMotivoTecnico(saga.motivoCompensacao)))];
     });
   }
 
@@ -246,6 +256,7 @@ export class OrquestradorSaga {
       const saga = ensureFound(await this.sagas.buscar(ctx.correlationId), 'Saga da ordem de serviço');
 
       const decisao = await decidir({ os, saga });
+      if (decisao === SEM_MUDANCA) return;
       if (decisao === IGNORADO) {
         this.logger.warn({
           msg: 'Evento fora da etapa esperada; ignorado',
@@ -263,8 +274,6 @@ export class OrquestradorSaga {
     });
   }
 }
-
-const descrever = (falha: FalhaLida): string => falha.mensagem || falha.motivo;
 
 const motivoDaCompensacao = (saga: SagaInstance): string =>
   saga.motivoCompensacao ?? 'Compensação da saga';

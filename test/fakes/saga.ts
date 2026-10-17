@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ContextoEvento, OrquestradorSaga } from '../../src/application/saga/orquestrador-saga';
 import { NovoItemOrcamento, TipoItemOrcamento } from '../../src/domain/ordem-de-servico/entities/ItemOrcamento';
 import { OrdemDeServico } from '../../src/domain/ordem-de-servico/entities/OrdemDeServico';
-import { SagaInstance } from '../../src/domain/saga/SagaInstance';
+import { EtapaSaga, SagaInstance } from '../../src/domain/saga/SagaInstance';
 import { INSUMO_FILTRO, SERVICO_REVISAO } from './catalogo-em-memoria';
 import { Cenario, DESTINOS } from './cenario';
 
@@ -48,4 +48,20 @@ export async function incluirItens(c: Cenario, osId: string, itens: NovoItemOrca
 
 export function criarOrquestrador(c: Cenario): OrquestradorSaga {
   return new OrquestradorSaga(c.transacao, c.processadas, c.trava, c.ordens, c.sagas, c.clientes, c.outbox, DESTINOS);
+}
+
+/** Versões gravadas da OS e da saga: iguais antes e depois = nada foi escrito. */
+export async function versoes(c: Cenario, osId: string): Promise<{ os: number; saga: number }> {
+  return {
+    os: (await c.ordens.buscarPorId(osId))!.versao,
+    saga: (await c.sagas.buscar(osId))!.versao,
+  };
+}
+
+/** Põe a saga direto numa etapa (para testar eventos atrasados em cada etapa). */
+export async function forcarEtapa(c: Cenario, osId: string, etapa: EtapaSaga): Promise<void> {
+  const atual = (await c.sagas.buscar(osId))!;
+  await c.sagas.salvar(
+    SagaInstance.restaurar({ osId, etapa, motivoCompensacao: atual.motivoCompensacao, versao: atual.versao }),
+  );
 }
