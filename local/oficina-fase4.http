@@ -1,0 +1,293 @@
+### Roteiro manual do fluxo da saga (REST Client do VS Code).
+### Pré-requisito: compose integrado no ar (local/README.md). Rode os blocos em ordem, de cima para baixo.
+### A versão automatizada do mesmo fluxo é o local/smoke.mjs.
+
+@os = http://localhost:3001/api/os
+@catalog = http://localhost:3002/api/catalog
+@execution = http://localhost:3003/api/execution
+@billing = http://localhost:3004/api/billing
+
+# Seed do OS (ids fixos)
+@clienteId = 0c000000-0000-4000-8000-000000000001
+@veiculoId = 0d000000-0000-4000-8000-000000000001
+
+# Seed do Catalog (ids fixos): serviço "Troca de óleo" (120,00),
+# insumo OLE-5W30 (estoque 50) e PAS-001 "Pastilha de freio" (estoque 0, cenário b).
+@servicoSeedId = a1000000-0000-4000-8000-000000000001
+@insumoSeedId = b2000000-0000-4000-8000-000000000002
+@insumoSemEstoqueId = b2000000-0000-4000-8000-000000000003
+
+# Cole aqui o token do e-mail simulado (passo 6).
+@tokenOrcamento = cole-o-token-do-log-do-billing
+
+###############################################################################
+# 1. Logins
+###############################################################################
+
+# @name loginAdmin
+POST {{os}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@oficina.local", "senha": "admin123" }
+
+###
+
+# @name loginAtendente
+POST {{os}}/auth/login
+Content-Type: application/json
+
+{ "email": "atendente@oficina.local", "senha": "senha123" }
+
+###
+
+# @name loginMecanico
+POST {{os}}/auth/login
+Content-Type: application/json
+
+{ "email": "mecanico@oficina.local", "senha": "senha123" }
+
+###
+
+@admin = {{loginAdmin.response.body.accessToken}}
+@atendente = {{loginAtendente.response.body.accessToken}}
+@mecanico = {{loginMecanico.response.body.accessToken}}
+
+###############################################################################
+# 2. Catalog: serviço e insumo novos (ou use os ids do seed acima)
+# O código do insumo é único: numa segunda execução troque "OLEO-VIDEO" (senão 409 INSUMO_CODIGO_DUPLICADO).
+###############################################################################
+
+# @name servico
+POST {{catalog}}/servicos
+Authorization: Bearer {{admin}}
+Content-Type: application/json
+
+{ "nome": "Troca de óleo (vídeo)", "descricao": "Troca de óleo e filtro", "valorPadrao": 150 }
+
+###
+
+# @name insumo
+POST {{catalog}}/insumos
+Authorization: Bearer {{admin}}
+Content-Type: application/json
+
+{ "codigo": "OLEO-VIDEO", "nome": "Óleo 5W30", "tipo": "INSUMO", "valorUnitario": 45.5, "quantidadeEstoque": 100 }
+
+###
+
+@servicoId = {{servico.response.body.id}}
+@insumoId = {{insumo.response.body.id}}
+
+###############################################################################
+# 3. Abrir a OS (atendente). Status RECEBIDA; a saga pede o diagnóstico ao Execution.
+###############################################################################
+
+# @name abrir
+POST {{os}}/ordens-de-servico
+Authorization: Bearer {{atendente}}
+Content-Type: application/json
+
+{ "clienteId": "{{clienteId}}", "veiculoId": "{{veiculoId}}", "observacoes": "Barulho no motor" }
+
+###
+
+@osId = {{abrir.response.body.id}}
+@numeroOs = {{abrir.response.body.numero}}
+
+###############################################################################
+# 4. Diagnóstico (mecânico)
+###############################################################################
+
+# A OS chega ao Execution de forma assíncrona: 404 até o enfileirar-diagnostico ser consumido.
+# Resposta: { ordem: { status: AGUARDANDO_DIAGNOSTICO, itens, ... }, historico }.
+GET {{execution}}/ordens/{{osId}}
+Authorization: Bearer {{mecanico}}
+
+###
+
+POST {{execution}}/{{osId}}/diagnostico/iniciar
+Authorization: Bearer {{mecanico}}
+
+###
+
+# Itens só entram com a OS em EM_DIAGNOSTICO (preço vem do Catalog).
+POST {{os}}/ordens-de-servico/{{osId}}/itens
+Authorization: Bearer {{mecanico}}
+Content-Type: application/json
+
+{ "tipo": "SERVICO", "referenciaId": "{{servicoId}}", "quantidade": 1 }
+
+###
+
+POST {{os}}/ordens-de-servico/{{osId}}/itens
+Authorization: Bearer {{mecanico}}
+Content-Type: application/json
+
+{ "tipo": "INSUMO", "referenciaId": "{{insumoId}}", "quantidade": 2 }
+
+###
+
+# Conclui o diagnóstico: o OS pede o orçamento ao Billing, que manda o e-mail (simulado).
+POST {{execution}}/{{osId}}/diagnostico/concluir
+Authorization: Bearer {{mecanico}}
+
+###############################################################################
+# 5. OS em AGUARDANDO_APROVACAO, com valorTotal e etapaSaga ORCAMENTO (assíncrono: repita se ainda EM_DIAGNOSTICO)
+###############################################################################
+
+GET {{os}}/ordens-de-servico/{{osId}}
+Authorization: Bearer {{admin}}
+
+###
+
+GET {{os}}/ordens-de-servico/{{osId}}/historico
+Authorization: Bearer {{admin}}
+
+###############################################################################
+# 6. Token do orçamento
+# O e-mail é um log do Billing ("E-mail enviado (simulado)") com o link
+# .../publico/orcamentos/<numero>?token=<token>. No terminal:
+#   docker compose -f local/docker-compose.yml logs billing | grep token=
+# Copie o token da OS certa e cole em @tokenOrcamento lá em cima.
+###############################################################################
+
+###############################################################################
+# 7. Cliente vê o orçamento e aprova (rotas públicas, sem JWT)
+###############################################################################
+
+GET {{billing}}/publico/orcamentos/{{numeroOs}}?token={{tokenOrcamento}}
+
+###
+
+# Aprovar → reserva de insumos → pivô (execucao-aceita).
+# Depois do aceite a OS continua APROVADA, com etapaSaga EXECUCAO; no Execution a ordem fica
+# AGUARDANDO_REPARO. A OS só vira EM_EXECUCAO com o reparo-iniciado (passo 8).
+POST {{billing}}/publico/orcamentos/{{numeroOs}}/decisao
+Content-Type: application/json
+
+{ "token": "{{tokenOrcamento}}", "decisao": "APROVADA" }
+
+###
+
+GET {{os}}/ordens-de-servico/{{osId}}
+Authorization: Bearer {{admin}}
+
+###############################################################################
+# 8. Reparo (mecânico)
+###############################################################################
+
+# @name reparoIniciar
+POST {{execution}}/{{osId}}/reparo/iniciar
+Authorization: Bearer {{mecanico}}
+
+###
+
+@itemId = {{reparoIniciar.response.body.$.itens[0].itemId}}
+
+POST {{execution}}/{{osId}}/itens/{{itemId}}/apontamento
+Authorization: Bearer {{mecanico}}
+Content-Type: application/json
+
+{ "acao": "INICIAR" }
+
+###
+
+POST {{execution}}/{{osId}}/itens/{{itemId}}/apontamento
+Authorization: Bearer {{mecanico}}
+Content-Type: application/json
+
+{ "acao": "FINALIZAR" }
+
+###
+
+# Libera a vaga; o OS vai a FINALIZADA e pede baixa do estoque + cobrança.
+POST {{execution}}/{{osId}}/reparo/concluir
+Authorization: Bearer {{mecanico}}
+
+###############################################################################
+# 9. Cobrança, pagamento e entrega
+###############################################################################
+
+# A cobrança é assíncrona (gerar-cobranca): repita até aparecer uma PENDENTE.
+# Com PAYMENT_PROVIDER=fake o initPoint aponta para o próprio /dev/pagamentos/<osId>/simular.
+GET {{billing}}/cobrancas/{{osId}}
+Authorization: Bearer {{admin}}
+
+###
+
+# 404 enquanto não houver cobrança PENDENTE.
+POST {{billing}}/dev/pagamentos/{{osId}}/simular
+Authorization: Bearer {{admin}}
+Content-Type: application/json
+
+{ "aprovado": true }
+
+###
+
+# Com a OS PAGA:
+POST {{os}}/ordens-de-servico/{{osId}}/entrega
+Authorization: Bearer {{atendente}}
+
+###
+
+GET {{os}}/ordens-de-servico/{{osId}}/historico
+Authorization: Bearer {{admin}}
+
+###
+
+# Estoque baixado: quantidadeEstoque 98, quantidadeReservada 0.
+GET {{catalog}}/insumos/{{insumoId}}
+Authorization: Bearer {{admin}}
+
+###############################################################################
+# 10. Status público da OS (referência)
+# Exige token de CLIENTE emitido pela Lambda de autenticação por CPF (Etapa 7);
+# com o token de funcionário responde 403.
+###############################################################################
+
+GET {{os}}/publico/os/{{numeroOs}}/status
+Authorization: Bearer <token-de-cliente-da-lambda>
+
+###############################################################################
+# 11. Cenários de falha (abra uma OS nova e repita os passos 3 a 7 com a diferença indicada)
+###############################################################################
+
+# (a) Reprovação: no passo 7 mande "REPROVADA". A OS termina REPROVADA (saga ENCERRADA).
+POST {{billing}}/publico/orcamentos/{{numeroOs}}/decisao
+Content-Type: application/json
+
+{ "token": "{{tokenOrcamento}}", "decisao": "REPROVADA" }
+
+###
+
+# (b) Sem estoque: no passo 4 use o insumo PAS-001 do seed (estoque 0) e aprove no passo 7.
+# A reserva falha, o Billing cancela o orçamento ("Não há estoque suficiente...") e a OS vira CANCELADA.
+POST {{os}}/ordens-de-servico/{{osId}}/itens
+Authorization: Bearer {{mecanico}}
+Content-Type: application/json
+
+{ "tipo": "INSUMO", "referenciaId": "{{insumoSemEstoqueId}}", "quantidade": 2 }
+
+###
+
+# (c) Fila cheia: o compose usa EXECUTION_MAX_CONCURRENT=1. Com uma OS aceita ainda sem
+# reparo/concluir, aprove uma segunda OS: o Execution recusa (CAPACIDADE_ESGOTADA), o Catalog
+# libera as reservas, o Billing cancela ("A oficina está sem capacidade...") e a segunda OS vira CANCELADA.
+GET {{execution}}/fila
+Authorization: Bearer {{mecanico}}
+
+###
+
+# (d) Pagamento recusado: no passo 9 simule com aprovado=false. A OS continua FINALIZADA, o histórico
+# ganha "Pagamento recusado" e o Billing gera nova cobrança PENDENTE (a anterior fica RECUSADA).
+# Com o fake o initPoint da nova cobrança é igual ao da anterior: compare pelo id em /cobrancas.
+POST {{billing}}/dev/pagamentos/{{osId}}/simular
+Authorization: Bearer {{admin}}
+Content-Type: application/json
+
+{ "aprovado": false }
+
+###
+
+GET {{billing}}/cobrancas/{{osId}}
+Authorization: Bearer {{admin}}

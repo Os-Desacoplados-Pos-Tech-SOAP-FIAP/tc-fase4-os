@@ -1,0 +1,133 @@
+# Fluxo completo da saga em uma máquina: 4 serviços + Postgres + LocalStack.
+# Pré-requisito: tc-fase4-catalog, tc-fase4-execution, tc-fase4-billing e tc-fase4-os clonados lado a lado.
+name: oficina-fase4
+
+x-aws: &aws
+  # A imagem de produção não tem pino-pretty (devDependency): com development o logger não sobe.
+  NODE_ENV: production
+  JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET em local/.env}
+  MESSAGING_ENABLED: 'true'
+  AWS_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://localstack:4566
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5440:5432'
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: dynamodb,sns,sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - '4566:4566'
+    volumes:
+      - ./localstack/init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', "curl -s localhost:4566/_localstack/init/ready | grep -q '\"completed\": *true'"]
+      interval: 5s
+      retries: 20
+
+  migrate-catalog:
+    build: { context: ../../tc-fase4-catalog, dockerfile: docker/Dockerfile, target: builder }
+    # Seed: serviços e insumos de exemplo com ids fixos (inclui um insumo com estoque zero).
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    environment:
+      DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-billing:
+    build: { context: ../../tc-fase4-billing, dockerfile: docker/Dockerfile, target: builder }
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://billing:billing@postgres:5432/billing?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-os:
+    build: { context: .., dockerfile: docker/Dockerfile, target: builder }
+    # Seed: usuários de teste e cliente/veículo com ids fixos (senhas locais padrão, NODE_ENV=development).
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://os:os@postgres:5432/os?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  catalog:
+    build: { context: ../../tc-fase4-catalog, dockerfile: docker/Dockerfile }
+    environment:
+      <<: *aws
+      PORT: '3002'
+      DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog?schema=public
+      INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-catalog-inbox.fifo
+      EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-catalog-events.fifo
+      OTEL_SERVICE_NAME: tc-fase4-catalog
+    ports: ['3002:3002']
+    depends_on:
+      migrate-catalog: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+
+  execution:
+    build: { context: ../../tc-fase4-execution, dockerfile: docker/Dockerfile }
+    environment:
+      <<: *aws
+      PORT: '3003'
+      DYNAMO_TABLE: oficina-execution
+      # Uma vaga só: permite provocar o cenário (c) "fila cheia" com duas OS.
+      EXECUTION_MAX_CONCURRENT: '1'
+      INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-execution-inbox.fifo
+      EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-execution-events.fifo
+      OTEL_SERVICE_NAME: tc-fase4-execution
+    ports: ['3003:3003']
+    depends_on:
+      localstack: { condition: service_healthy }
+
+  billing:
+    build: { context: ../../tc-fase4-billing, dockerfile: docker/Dockerfile }
+    environment:
+      <<: *aws
+      PORT: '3004'
+      DATABASE_URL: postgresql://billing:billing@postgres:5432/billing?schema=public
+      INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-billing-inbox.fifo
+      EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-billing-events.fifo
+      PUBLIC_BASE_URL: http://localhost:3004
+      PAYMENT_PROVIDER: fake
+      OTEL_SERVICE_NAME: tc-fase4-billing
+    ports: ['3004:3004']
+    depends_on:
+      migrate-billing: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+
+  os:
+    build: { context: .., dockerfile: docker/Dockerfile }
+    environment:
+      <<: *aws
+      PORT: '3001'
+      DATABASE_URL: postgresql://os:os@postgres:5432/os?schema=public
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?defina INTERNAL_SERVICE_TOKEN em local/.env}
+      CATALOG_BASE_URL: http://catalog:3002/api/catalog
+      INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-os-inbox.fifo
+      CATALOG_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-catalog-inbox.fifo
+      BILLING_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-billing-inbox.fifo
+      EXECUTION_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-execution-inbox.fifo
+      OTEL_SERVICE_NAME: tc-fase4-os
+    ports: ['3001:3001']
+    depends_on:
+      migrate-os: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+      catalog: { condition: service_healthy }

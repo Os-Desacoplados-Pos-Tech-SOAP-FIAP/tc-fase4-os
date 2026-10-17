@@ -1,7 +1,7 @@
 #!/bin/bash
 # Topologia FIFO usada pelo OS no LocalStack (mesmos nomes da AWS).
 # As filas de entrada de Catalog, Billing e Execution são criadas aqui só para o teste local
-# isolado do OS; no compose completo (tc-fase4-docs/local) cada serviço cria a sua.
+# isolado do OS; no compose completo (local/ deste repositório) o local/localstack/init.sh cria todas.
 set -euo pipefail
 R=us-east-1
 

@@ -14,7 +14,7 @@ Stack: NestJS 10, TypeScript, PostgreSQL 16, Prisma 5, SQS FIFO (AWS SDK v3), Pi
 ## Arquitetura geral
 
 O OS manda cada comando direto na fila de entrada do serviço dono e recebe todos os eventos pela própria fila de
-entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços (assinaturas criadas pelo compose integrado e pelo Terraform da infra, não por este repositório). Ele não tem tópico de
+entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços (assinaturas criadas localmente por `local/localstack/init.sh` e, na AWS, pelo Terraform da infra na Etapa 8). Ele não tem tópico de
 eventos próprio. A única chamada síncrona entre serviços da saga é a consulta de preço ao Catalog (REST).
 
 ```mermaid
@@ -315,10 +315,15 @@ npx prisma db seed
 npm run start:dev        # http://localhost:3001/api/os/docs
 ```
 
-O `docker-compose.yml` sobe só as dependências do OS; o compose com os quatro serviços fica em `tc-fase4-docs/local`.
+O `docker-compose.yml` sobe só as dependências do OS; o compose com os quatro serviços fica em `local/`.
 O Postgres cria também o banco `os_test` (usado pelos testes). O script `docker/localstack/init-os.sh` cria as filas de
 entrada de OS, Catalog, Billing e Execution, cada uma com sua DLQ. As dos outros serviços existem aqui só para o teste
 isolado do OS.
+
+### Fluxo completo (4 serviços)
+
+Para subir OS, Catalog, Execution e Billing juntos, com LocalStack e smoke automatizado da saga, veja
+[`local/README.md`](local/README.md).
 
 ### Seed (dados fixos de desenvolvimento)
 
