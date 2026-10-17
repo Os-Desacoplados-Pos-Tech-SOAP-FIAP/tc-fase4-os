@@ -1,0 +1,190 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PerfilAcesso {
+  ADMINISTRADOR
+  ATENDENTE
+  MECANICO
+}
+
+enum TipoCliente {
+  PF
+  PJ
+}
+
+enum StatusOS {
+  RECEBIDA
+  EM_DIAGNOSTICO
+  AGUARDANDO_APROVACAO
+  APROVADA
+  REPROVADA
+  EM_EXECUCAO
+  FINALIZADA
+  PAGA
+  ENTREGUE
+  CANCELADA
+}
+
+enum TipoItemOrcamento {
+  SERVICO
+  INSUMO
+}
+
+enum EtapaSaga {
+  DIAGNOSTICO
+  ORCAMENTO
+  RESERVA
+  EXECUCAO_SOLICITADA
+  EXECUCAO
+  COBRANCA
+  CONCLUIDA
+  ENCERRADA
+  COMPENSANDO_RESERVAS
+  COMPENSANDO_ORCAMENTO
+  COMPENSADA
+}
+
+/// Funcionários (o cliente entra pela Lambda de CPF, sem senha).
+model Usuario {
+  id           String       @id
+  nome         String
+  email        String       @unique
+  senha        String
+  perfil       PerfilAcesso
+  ativo        Boolean      @default(true)
+  criadoEm     DateTime     @default(now())
+  atualizadoEm DateTime     @updatedAt
+}
+
+model Cliente {
+  id           String      @id
+  tipo         TipoCliente
+  documento    String      @unique
+  nome         String
+  email        String
+  telefone     String?
+  criadoEm     DateTime    @default(now())
+  atualizadoEm DateTime    @updatedAt
+
+  veiculos        Veiculo[]
+  ordensDeServico OrdemDeServico[]
+}
+
+model Veiculo {
+  id           String   @id
+  placa        String   @unique
+  marca        String
+  modelo       String
+  ano          Int
+  clienteId    String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  cliente         Cliente          @relation(fields: [clienteId], references: [id])
+  ordensDeServico OrdemDeServico[]
+}
+
+/// Ordem de serviço. O status só muda por eventos da saga e pela entrega (spec §2.1).
+model OrdemDeServico {
+  id                 String    @id
+  /// Gerado pela sequência "OrdemDeServico_numero_seq" (nextval), nunca por max + 1.
+  numero             Int       @unique @default(autoincrement())
+  clienteId          String
+  veiculoId          String
+  status             StatusOS
+  observacoes        String?
+  /// Valor e validade informados pelo Billing em orcamento-enviado.
+  valorOrcamento     Decimal?  @db.Decimal(10, 2)
+  orcamentoValidoAte DateTime?
+  /// Último link de pagamento (cobranca-gerada); limpo quando o pagamento é recusado.
+  linkPagamento      String?
+  /// Concorrência otimista (rede de segurança além do advisory lock por OS).
+  versao             Int
+  criadoEm           DateTime  @default(now())
+  atualizadoEm       DateTime  @updatedAt
+
+  cliente   Cliente           @relation(fields: [clienteId], references: [id])
+  veiculo   Veiculo           @relation(fields: [veiculoId], references: [id])
+  itens     ItemOrcamento[]
+  historico HistoricoStatus[]
+
+  @@index([status])
+}
+
+/// Snapshot do item no momento da inclusão (nome e preço vindos do Catalog).
+model ItemOrcamento {
+  id            String            @id
+  osId          String
+  tipo          TipoItemOrcamento
+  referenciaId  String
+  descricao     String
+  quantidade    Int
+  valorUnitario Decimal           @db.Decimal(10, 2)
+  criadoEm      DateTime          @default(now())
+  /// Ordem de inclusão: itens criados no mesmo milissegundo têm o mesmo `criadoEm`.
+  seq           Int               @unique @default(autoincrement())
+
+  os OrdemDeServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+
+  @@unique([osId, tipo, referenciaId])
+}
+
+/// Transições de status (e ocorrências sem troca de status, com de = para).
+/// `id` sequencial: dá a ordem exata mesmo quando dois registros têm o mesmo `em`.
+model HistoricoStatus {
+  id     Int       @id @default(autoincrement())
+  osId   String
+  de     StatusOS?
+  para   StatusOS
+  motivo String?
+  em     DateTime  @default(now())
+
+  os OrdemDeServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+
+  @@index([osId, em])
+}
+
+/// Estado do orquestrador (process manager) de cada OS.
+model SagaInstance {
+  osId              String    @id
+  etapa             EtapaSaga
+  motivoCompensacao String?
+  versao            Int
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
+}
+
+/// Outbox transacional: gravada junto com o estado, publicada pelo OutboxPublisher.
+/// `seq` define a ordem de publicação (criadoEm pode empatar ou vir fora de ordem entre transações).
+// Índice parcial "Outbox_pendentes_grupo_idx" ("groupId", "seq") WHERE "publicadoEm" IS NULL fica
+// na migração inicial: o Prisma não expressa índice com WHERE.
+model Outbox {
+  id          String    @id @default(uuid())
+  seq         BigInt    @unique @default(autoincrement())
+  messageId   String    @unique
+  type        String
+  destination String
+  groupId     String
+  body        Json
+  criadoEm    DateTime  @default(now())
+  publicadoEm DateTime?
+  tentativas  Int       @default(0)
+  ultimoErro  String?
+  /// Contexto W3C de quem gravou o comando, para continuar o trace no consumidor.
+  traceparent String?
+
+  @@index([publicadoEm, seq])
+}
+
+/// Idempotência das mensagens recebidas.
+model ProcessedMessage {
+  messageId    String   @id
+  processadoEm DateTime @default(now())
+}

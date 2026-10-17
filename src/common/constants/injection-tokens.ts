@@ -1,0 +1,14 @@
+export const INJECTION_TOKENS = {
+  USUARIO_REPOSITORY: Symbol('IUsuarioRepository'),
+  CLIENTE_REPOSITORY: Symbol('IClienteRepository'),
+  VEICULO_REPOSITORY: Symbol('IVeiculoRepository'),
+  ORDEM_DE_SERVICO_REPOSITORY: Symbol('IOrdemDeServicoRepository'),
+  SAGA_REPOSITORY: Symbol('ISagaRepository'),
+  PROCESSED_MESSAGE_REPOSITORY: Symbol('IProcessedMessageRepository'),
+  OUTBOX: Symbol('IOutbox'),
+  TRANSACTION_MANAGER: Symbol('ITransactionManager'),
+  TRAVA_POR_OS: Symbol('ITravaPorOs'),
+  HASH_PROVIDER: Symbol('IHashProvider'),
+  CATALOGO: Symbol('ICatalogo'),
+  DESTINOS_COMANDOS: Symbol('DestinosComandos'),
+} as const;
