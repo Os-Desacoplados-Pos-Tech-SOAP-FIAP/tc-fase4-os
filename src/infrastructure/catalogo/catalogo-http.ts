@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { CatalogoIndisponivelError } from '../../application/errors';
 import { ICatalogo, ItemDoCatalogo } from '../../application/ports/catalogo';
@@ -34,6 +34,8 @@ async function descartarCorpo(resposta: Response): Promise<void> {
  */
 @Injectable()
 export class CatalogoHttp implements ICatalogo {
+  private readonly logger = new Logger(CatalogoHttp.name);
+
   constructor(@Inject(CONFIG_CATALOGO) private readonly config: ConfigCatalogo) {}
 
   buscarServico(id: string, autorizacao: string): Promise<ItemDoCatalogo | null> {
@@ -52,7 +54,7 @@ export class CatalogoHttp implements ICatalogo {
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
     } catch (erro) {
-      throw new CatalogoIndisponivelError((erro as Error).name === 'TimeoutError' ? 'timeout' : 'falha de rede');
+      throw this.indisponivel((erro as Error).name === 'TimeoutError' ? 'timeout' : 'falha de rede', caminho);
     }
     if (resposta.status === 404) {
       await descartarCorpo(resposta);
@@ -60,12 +62,18 @@ export class CatalogoHttp implements ICatalogo {
     }
     if (!resposta.ok) {
       await descartarCorpo(resposta);
-      throw new CatalogoIndisponivelError(`HTTP ${resposta.status}`);
+      throw this.indisponivel(`HTTP ${resposta.status}`, caminho, resposta.status);
     }
 
     const corpo: unknown = await resposta.json().catch(() => null);
     const item = typeof corpo === 'object' && corpo !== null ? ler(corpo as Record<string, unknown>) : null;
-    if (!item) throw new CatalogoIndisponivelError('resposta fora do contrato');
+    if (!item) throw this.indisponivel('resposta fora do contrato', caminho, resposta.status);
     return item;
+  }
+
+  /** Registra a falha (sem o header authorization) e devolve o erro que vira 503. */
+  private indisponivel(motivo: string, caminho: string, status?: number): CatalogoIndisponivelError {
+    this.logger.warn({ msg: 'Catalog indisponível', motivo, caminho, ...(status === undefined ? {} : { status }) });
+    return new CatalogoIndisponivelError(motivo);
   }
 }
