@@ -141,6 +141,45 @@ export class OrquestradorSaga {
     });
   }
 
+  // ── Compensações (spec §4.4, E6) ────────────────────────────────────────
+
+  /** Falha na reserva: só o orçamento a desfazer. */
+  reservaFalhou(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
+    return this.processar(ctx, ({ saga }) => {
+      if (!saga.em(EtapaSaga.RESERVA)) return IGNORADO;
+      const motivo = `Reserva de insumos falhou: ${descrever(falha)}`;
+      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, motivo);
+      return [comandos.cancelarOrcamento(motivo)];
+    });
+  }
+
+  /** Recusa no pivô: desfaz em ordem inversa, primeiro as reservas. */
+  execucaoRecusada(ctx: ContextoEvento, falha: FalhaLida): Promise<void> {
+    return this.processar(ctx, ({ saga }) => {
+      if (!saga.em(EtapaSaga.EXECUCAO_SOLICITADA)) return IGNORADO;
+      saga.compensar(EtapaSaga.COMPENSANDO_RESERVAS, `Execução recusada: ${descrever(falha)}`);
+      return [comandos.liberarReservas()];
+    });
+  }
+
+  reservasLiberadas(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ saga }) => {
+      if (!saga.em(EtapaSaga.COMPENSANDO_RESERVAS)) return IGNORADO;
+      saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
+      return [comandos.cancelarOrcamento(motivoDaCompensacao(saga))];
+    });
+  }
+
+  /** Última confirmação: só aqui a OS vira CANCELADA. */
+  orcamentoCancelado(ctx: ContextoEvento): Promise<void> {
+    return this.processar(ctx, ({ os, saga }) => {
+      if (!saga.em(EtapaSaga.COMPENSANDO_ORCAMENTO) || os.status !== StatusOS.APROVADA) return IGNORADO;
+      os.cancelar(motivoDaCompensacao(saga));
+      saga.avancar(EtapaSaga.COMPENSADA);
+      return NENHUM;
+    });
+  }
+
   // ── Execução (Execution) ────────────────────────────────────────────────
 
   reparoIniciado(ctx: ContextoEvento): Promise<void> {
@@ -224,3 +263,8 @@ export class OrquestradorSaga {
     });
   }
 }
+
+const descrever = (falha: FalhaLida): string => falha.mensagem || falha.motivo;
+
+const motivoDaCompensacao = (saga: SagaInstance): string =>
+  saga.motivoCompensacao ?? 'Compensação da saga';
