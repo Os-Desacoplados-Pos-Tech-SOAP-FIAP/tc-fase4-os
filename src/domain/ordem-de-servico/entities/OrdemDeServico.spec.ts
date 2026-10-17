@@ -59,6 +59,60 @@ describe('OrdemDeServico', () => {
     expect(() => OrdemDeServico.abrir({ numero: 1, clienteId: 'x', veiculoId: VEICULO })).toThrow(
       expect.objectContaining({ code: 'INVALID_ID' }),
     );
+    expect(() => OrdemDeServico.abrir({ numero: 1, clienteId: CLIENTE, veiculoId: 'x' })).toThrow(
+      expect.objectContaining({ code: 'INVALID_ID' }),
+    );
+  });
+
+  describe('imutabilidade dos getters', () => {
+    it('alterar um item obtido pelos getters não muda a OS', () => {
+      const os = emDiagnosticoComItens();
+      os.itens[0].incrementar(5);
+      os.itensDeServico[0].incrementar(5);
+      os.itensDeInsumo[0].incrementar(5);
+      expect(os.itens.map((i) => i.quantidade)).toEqual([1, 2]);
+      expect(os.valorTotal).toBe(271);
+    });
+
+    it('o item devolvido por adicionarItem não altera a OS', () => {
+      const os = abrir();
+      os.iniciarDiagnostico();
+      os.adicionarItem(servico).incrementar(5);
+      expect(os.itens[0].quantidade).toBe(1);
+    });
+
+    it('orçamento e histórico não vazam referências internas', () => {
+      const os = emDiagnosticoComItens();
+      const validade = new Date('2026-10-20T12:00:00Z');
+      os.registrarOrcamentoEnviado(271, validade);
+      os.orcamento?.validoAte.setUTCFullYear(2000);
+      expect(os.orcamento?.validoAte).toEqual(validade);
+      const em = os.historicoPendente[0].em.getTime();
+      os.historicoPendente[0].em.setUTCFullYear(2000);
+      expect(os.historicoPendente[0].em.getTime()).toBe(em);
+    });
+
+    it('restaurar copia o orçamento recebido', () => {
+      const original = aprovada();
+      const orcamento = { valor: 271, validoAte: new Date('2026-10-20T12:00:00Z') };
+      const os = OrdemDeServico.restaurar(
+        {
+          numero: original.numero,
+          clienteId: CLIENTE,
+          veiculoId: VEICULO,
+          status: StatusOS.APROVADA,
+          observacoes: null,
+          itens: [...original.itens],
+          orcamento,
+          linkPagamento: null,
+          versao: 1,
+        },
+        original.id,
+      );
+      orcamento.validoAte.setUTCFullYear(2000);
+      orcamento.valor = 1;
+      expect(os.orcamento).toEqual({ valor: 271, validoAte: new Date('2026-10-20T12:00:00Z') });
+    });
   });
 
   describe('diagnóstico', () => {
@@ -80,6 +134,40 @@ describe('OrdemDeServico', () => {
       os.adicionarItem({ ...insumo, quantidade: 1 });
       expect(os.itens).toHaveLength(1);
       expect(os.itens[0].quantidade).toBe(3);
+    });
+
+    it('item repetido mantém descrição e preço da primeira inclusão (snapshot)', () => {
+      const os = abrir();
+      os.iniciarDiagnostico();
+      os.adicionarItem(insumo);
+      os.adicionarItem({ ...insumo, descricao: 'Filtro novo', quantidade: 1, valorUnitario: 99.9 });
+      expect(os.itens).toHaveLength(1);
+      expect(os.itens[0].quantidade).toBe(3);
+      expect(os.itens[0].descricao).toBe('Filtro');
+      expect(os.itens[0].valorUnitario).toBe(35.5);
+      expect(os.valorTotal).toBe(106.5);
+    });
+
+    it('repetir item com quantidade 0 é recusado', () => {
+      const os = abrir();
+      os.iniciarDiagnostico();
+      os.adicionarItem(insumo);
+      expect(() => os.adicionarItem({ ...insumo, quantidade: 0 })).toThrow(
+        expect.objectContaining({ code: 'ITEM_QUANTIDADE_INVALIDA' }),
+      );
+      expect(os.itens[0].quantidade).toBe(2);
+    });
+
+    it('reabrirDiagnostico só em EM_DIAGNOSTICO', () => {
+      expect(() => abrir().reabrirDiagnostico('x')).toThrow(
+        expect.objectContaining({ code: 'OS_TRANSICAO_INVALIDA' }),
+      );
+    });
+
+    it('iniciarDiagnostico não volta de APROVADA', () => {
+      expect(() => aprovada().iniciarDiagnostico()).toThrow(
+        expect.objectContaining({ code: 'OS_TRANSICAO_INVALIDA' }),
+      );
     });
 
     it('calcula total, separa serviços e insumos', () => {
@@ -199,6 +287,14 @@ describe('OrdemDeServico', () => {
       );
       expect(() => os.registrarPagamentoRecusado('x')).toThrow(
         expect.objectContaining({ code: 'OS_COBRANCA_FORA_DE_FASE' }),
+      );
+    });
+
+    it('não cancela depois do pivô (EM_EXECUCAO)', () => {
+      const os = aprovada();
+      os.iniciarExecucao();
+      expect(() => os.cancelar('x')).toThrow(
+        expect.objectContaining({ code: 'OS_TRANSICAO_INVALIDA' }),
       );
     });
 

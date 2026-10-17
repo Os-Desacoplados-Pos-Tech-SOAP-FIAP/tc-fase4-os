@@ -1,4 +1,4 @@
-import { ItemOrcamento, TipoItemOrcamento } from './ItemOrcamento';
+import { ItemOrcamento, NovoItemOrcamento, TipoItemOrcamento } from './ItemOrcamento';
 
 const SERVICO_ID = '7d3c1b7e-0a37-4c9e-9c35-0d2f0b6f4a11';
 const novo = {
@@ -20,6 +20,18 @@ describe('ItemOrcamento', () => {
   it('soma sem erro de ponto flutuante', () => {
     const item = ItemOrcamento.criar({ ...novo, quantidade: 3, valorUnitario: 0.1 });
     expect(item.valorTotal).toBe(0.3);
+  });
+
+  it('aceita resíduo de ponto flutuante e guarda o valor normalizado', () => {
+    const item = ItemOrcamento.criar({ ...novo, valorUnitario: 10.000000001 });
+    expect(item.valorUnitario).toBe(10);
+  });
+
+  it('recusa descrição ausente (entrada sem tipagem)', () => {
+    const semDescricao = { ...novo, descricao: undefined } as unknown as NovoItemOrcamento;
+    expect(() => ItemOrcamento.criar(semDescricao)).toThrow(
+      expect.objectContaining({ code: 'ITEM_DESCRICAO_INVALIDA' }),
+    );
   });
 
   it.each([

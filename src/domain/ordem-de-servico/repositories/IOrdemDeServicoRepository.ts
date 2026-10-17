@@ -7,6 +7,7 @@ export interface IOrdemDeServicoRepository {
   /**
    * Insere (versão 0) ou atualiza conferindo a versão (conflito lança ConcorrenciaError).
    * Grava itens e histórico pendente na mesma operação e chama `confirmarHistorico()`.
+   * Não reutilize a instância depois de salvar: a versão no banco avança e a instância fica desatualizada.
    */
   salvar(os: OrdemDeServico): Promise<void>;
   buscarPorId(id: string): Promise<OrdemDeServico | null>;

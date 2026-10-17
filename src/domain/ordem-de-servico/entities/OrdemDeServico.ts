@@ -4,6 +4,22 @@ import { UniqueID } from '../../shared/UniqueID';
 import { podeTransicionar, StatusOS, STATUS_TERMINAIS } from '../StatusOS';
 import { ItemOrcamento, NovoItemOrcamento, TipoItemOrcamento } from './ItemOrcamento';
 
+/** Cópia desacoplada do item interno, para que quem lê a OS não consiga alterá-la. */
+function copiarItem(item: ItemOrcamento): ItemOrcamento {
+  return ItemOrcamento.restaurar(
+    {
+      tipo: item.tipo,
+      referenciaId: item.referenciaId,
+      descricao: item.descricao,
+      quantidade: item.quantidade,
+      valorUnitario: item.valorUnitario,
+      criadoEm: new Date(item.criadoEm),
+      atualizadoEm: new Date(item.atualizadoEm),
+    },
+    item.id,
+  );
+}
+
 /** Limite do Decimal(10,2) do Billing (D13 da Etapa 4). */
 export const VALOR_TOTAL_MAXIMO_EM_CENTAVOS = 9_999_999_999;
 
@@ -73,7 +89,8 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
   }
 
   public static restaurar(props: OrdemDeServicoProps, id: UniqueID): OrdemDeServico {
-    return new OrdemDeServico({ ...props, itens: [...props.itens] }, id);
+    const orcamento = props.orcamento && { ...props.orcamento, validoAte: new Date(props.orcamento.validoAte) };
+    return new OrdemDeServico({ ...props, itens: [...props.itens], orcamento }, id);
   }
 
   public get numero(): number {
@@ -92,16 +109,17 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
     return this.props.observacoes;
   }
   public get itens(): readonly ItemOrcamento[] {
-    return [...this.props.itens];
+    return this.props.itens.map(copiarItem);
   }
   public get itensDeServico(): ItemOrcamento[] {
-    return this.props.itens.filter((item) => item.tipo === TipoItemOrcamento.SERVICO);
+    return this.props.itens.filter((item) => item.tipo === TipoItemOrcamento.SERVICO).map(copiarItem);
   }
   public get itensDeInsumo(): ItemOrcamento[] {
-    return this.props.itens.filter((item) => item.tipo === TipoItemOrcamento.INSUMO);
+    return this.props.itens.filter((item) => item.tipo === TipoItemOrcamento.INSUMO).map(copiarItem);
   }
   public get orcamento(): OrcamentoDaOS | null {
-    return this.props.orcamento && { ...this.props.orcamento };
+    const orcamento = this.props.orcamento;
+    return orcamento && { valor: orcamento.valor, validoAte: new Date(orcamento.validoAte) };
   }
   public get linkPagamento(): string | null {
     return this.props.linkPagamento;
@@ -113,7 +131,7 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
     return STATUS_TERMINAIS.has(this.props.status);
   }
   public get historicoPendente(): RegistroHistorico[] {
-    return [...this.registrosPendentes];
+    return this.registrosPendentes.map((registro) => ({ ...registro, em: new Date(registro.em) }));
   }
 
   private get valorTotalEmCentavos(): number {
@@ -136,6 +154,7 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
     return true;
   }
 
+  /** Item repetido só soma a quantidade: descrição e preço ficam os da primeira inclusão (snapshot). */
   public adicionarItem(novo: NovoItemOrcamento): ItemOrcamento {
     if (this.props.status !== StatusOS.EM_DIAGNOSTICO) {
       throw new DomainError(
@@ -149,12 +168,12 @@ export class OrdemDeServico extends Entity<OrdemDeServicoProps> {
     if (existente) {
       existente.incrementar(novo.quantidade);
       this.touch();
-      return existente;
+      return copiarItem(existente);
     }
     const item = ItemOrcamento.criar(novo);
     this.props.itens.push(item);
     this.touch();
-    return item;
+    return copiarItem(item);
   }
 
   /** Mesmas regras do Billing para gerar-orcamento (E5); null = orçamento válido. */

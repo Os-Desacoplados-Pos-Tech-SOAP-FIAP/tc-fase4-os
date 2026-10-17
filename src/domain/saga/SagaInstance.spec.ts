@@ -76,6 +76,33 @@ describe('SagaInstance', () => {
     );
   });
 
+  it('iniciar recusa osId que não é UUID', () => {
+    expect(() => SagaInstance.iniciar('os-1')).toThrow(expect.objectContaining({ code: 'INVALID_ID' }));
+  });
+
+  it.each([
+    [EtapaSaga.RESERVA, EtapaSaga.COMPENSANDO_ORCAMENTO],
+    [EtapaSaga.EXECUCAO_SOLICITADA, EtapaSaga.COMPENSANDO_RESERVAS],
+  ])('avancar recusa entrar em compensação sem motivo (%s → %s)', (de, para) => {
+    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, motivoCompensacao: null, versao: 1 });
+    expect(() => saga.avancar(para)).toThrow(
+      expect.objectContaining({ code: 'SAGA_COMPENSACAO_SEM_MOTIVO' }),
+    );
+    expect(saga.etapa).toBe(de);
+  });
+
+  it('avancar segue de COMPENSANDO_RESERVAS para COMPENSANDO_ORCAMENTO', () => {
+    const saga = SagaInstance.restaurar({
+      osId: OS_ID,
+      etapa: EtapaSaga.COMPENSANDO_RESERVAS,
+      motivoCompensacao: 'Fila cheia',
+      versao: 3,
+    });
+    saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
+    expect(saga.etapa).toBe(EtapaSaga.COMPENSANDO_ORCAMENTO);
+    expect(saga.motivoCompensacao).toBe('Fila cheia');
+  });
+
   it('em() aceita várias etapas', () => {
     const saga = SagaInstance.iniciar(OS_ID);
     expect(saga.em(EtapaSaga.ORCAMENTO, EtapaSaga.DIAGNOSTICO)).toBe(true);

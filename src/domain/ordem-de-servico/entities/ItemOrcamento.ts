@@ -51,7 +51,7 @@ export class ItemOrcamento extends Entity<ItemOrcamentoProps> {
       referenciaId: new UniqueID(novo.referenciaId).toValue(),
       descricao,
       quantidade: novo.quantidade,
-      valorUnitario: novo.valorUnitario,
+      valorUnitario: paraCentavos(novo.valorUnitario) / 100,
     });
   }
 

@@ -1,4 +1,5 @@
 import { DomainError } from '../shared/DomainError';
+import { UniqueID } from '../shared/UniqueID';
 
 export enum EtapaSaga {
   DIAGNOSTICO = 'DIAGNOSTICO',
@@ -53,7 +54,7 @@ export class SagaInstance {
   private constructor(private readonly props: SagaInstanceProps) {}
 
   public static iniciar(osId: string): SagaInstance {
-    return new SagaInstance({ osId, etapa: EtapaSaga.DIAGNOSTICO, motivoCompensacao: null, versao: 0 });
+    return new SagaInstance({ osId: new UniqueID(osId).toValue(), etapa: EtapaSaga.DIAGNOSTICO, motivoCompensacao: null, versao: 0 });
   }
 
   public static restaurar(props: SagaInstanceProps): SagaInstance {
@@ -83,11 +84,13 @@ export class SagaInstance {
     return etapas.includes(this.props.etapa);
   }
 
+  /** Entrar em compensação vindo do fluxo normal exige `compensar` (que guarda o motivo). */
   public avancar(para: EtapaSaga): void {
-    if (!TRANSICOES[this.props.etapa].includes(para)) {
+    this.validarTransicao(para);
+    if (COMPENSACOES.has(para) && !COMPENSACOES.has(this.props.etapa)) {
       throw new DomainError(
-        `Saga não pode ir de ${this.props.etapa} para ${para}`,
-        'SAGA_TRANSICAO_INVALIDA',
+        `Entrada em ${para} exige motivo; use compensar em vez de avancar`,
+        'SAGA_COMPENSACAO_SEM_MOTIVO',
       );
     }
     this.props.etapa = para;
@@ -98,7 +101,17 @@ export class SagaInstance {
     if (!COMPENSACOES.has(para)) {
       throw new DomainError(`${para} não é etapa de compensação`, 'SAGA_COMPENSACAO_INVALIDA');
     }
-    this.avancar(para);
+    this.validarTransicao(para);
+    this.props.etapa = para;
     this.props.motivoCompensacao = motivo;
+  }
+
+  private validarTransicao(para: EtapaSaga): void {
+    if (!TRANSICOES[this.props.etapa].includes(para)) {
+      throw new DomainError(
+        `Saga não pode ir de ${this.props.etapa} para ${para}`,
+        'SAGA_TRANSICAO_INVALIDA',
+      );
+    }
   }
 }
