@@ -311,7 +311,7 @@ cp .env.example .env     # ajuste JWT_SECRET e INTERNAL_SERVICE_TOKEN
 npm ci
 docker compose up -d     # Postgres (5433) + LocalStack (SQS FIFO, filas criadas no boot)
 npx prisma migrate deploy
-npx prisma db seed
+npm run build && npx prisma db seed  # seed compilado (dist/infrastructure/database/seed.js)
 npm run start:dev        # http://localhost:3001/api/os/docs
 ```
 
