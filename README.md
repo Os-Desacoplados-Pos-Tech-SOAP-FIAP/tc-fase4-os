@@ -14,7 +14,7 @@ Stack: NestJS 10, TypeScript, PostgreSQL 16, Prisma 5, SQS FIFO (AWS SDK v3), Pi
 ## Arquitetura geral
 
 O OS manda cada comando direto na fila de entrada do serviço dono e recebe todos os eventos pela própria fila de
-entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços. Ele não tem tópico de
+entrada, `oficina-os-inbox.fifo`, que assina os tópicos de eventos dos outros três serviços (assinaturas criadas pelo compose integrado e pelo Terraform da infra, não por este repositório). Ele não tem tópico de
 eventos próprio. A única chamada síncrona entre serviços da saga é a consulta de preço ao Catalog (REST).
 
 ```mermaid
@@ -419,4 +419,4 @@ O workflow `.github/workflows/ci.yml` (job `ci`) roda, em ordem:
 6. build da imagem Docker (`docker/Dockerfile`);
 7. análise SonarCloud.
 
-`ci` e `SonarCloud Code Analysis` são os checks do PR.
+`ci` e `SonarCloud Code Analysis` são checks obrigatórios para merge na `main` (ruleset `protect-main`).
