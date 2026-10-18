@@ -1,5 +1,6 @@
 # Fluxo completo da saga em uma máquina: 4 serviços + Postgres + LocalStack + Grafana LGTM.
-# Pré-requisito: tc-fase4-catalog, tc-fase4-execution, tc-fase4-billing e tc-fase4-os clonados lado a lado.
+# Pré-requisito: tc-fase4-catalog, tc-fase4-execution, tc-fase4-billing, tc-fase4-os e tc-fase4-infra (dashboards)
+# clonados lado a lado.
 name: oficina-fase4
 
 x-aws: &aws
@@ -52,8 +53,8 @@ services:
     volumes:
       - lgtm-data:/data
       - ./grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/oficina.yaml:ro
-      # Dashboards provisionados. A Task 5 troca a origem para ../../tc-fase4-infra/observability.
-      - ./grafana/dashboards:/otel-lgtm/dashboards/oficina:ro
+      # Dashboards provisionados: os JSON versionados no tc-fase4-infra (clonado lado a lado).
+      - ../../tc-fase4-infra/observability:/otel-lgtm/dashboards/oficina:ro
     healthcheck:
       test: ['CMD-SHELL', 'test -f /tmp/ready']
       interval: 5s

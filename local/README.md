@@ -7,7 +7,8 @@ rodar o fluxo de ponta a ponta numa máquina, sem conta AWS (credenciais fictíc
 
 - Docker com Compose v2.
 - Node 20+ (só para o `smoke.mjs`; sem dependências).
-- Os 4 repositórios clonados lado a lado. As imagens são construídas das pastas irmãs:
+- Os 4 repositórios clonados lado a lado. As imagens são construídas das pastas irmãs. O `tc-fase4-infra` também,
+  porque os dashboards do Grafana vêm de `tc-fase4-infra/observability/`:
 
 ```bash
 mkdir fase_04 && cd fase_04
@@ -15,6 +16,7 @@ git clone git@github.com:Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-os.git
 git clone git@github.com:Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-catalog.git
 git clone git@github.com:Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-execution.git
 git clone git@github.com:Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-billing.git
+git clone git@github.com:Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-infra.git
 ```
 
 ## Subir
@@ -167,9 +169,9 @@ serviços exportam traces e métricas via OTLP/HTTP para `http://lgtm:4318` (`OT
 - **Intervalo das métricas:** 10 s (`OTEL_METRIC_EXPORT_INTERVAL` no bloco `x-aws`); só tem efeito nos serviços
   que já leem a variável no `src/tracing.ts` (sem isso, 60 s).
 - **Dashboards:** a imagem já traz "RED Metrics" e "JVM". Os da oficina ficam na pasta **Oficina**, provisionados
-  por `grafana/dashboards.yaml` a partir dos `*.json` montados de `grafana/dashboards/` (vazia por enquanto; vai
-  apontar para `../../tc-fase4-infra/observability/`). O Grafana lê os arquivos na subida: depois de mudar um JSON,
-  rode `docker compose restart lgtm`.
+  por `grafana/dashboards.yaml` a partir dos `*.json` de `../../tc-fase4-infra/observability/` (ex.: "Saga da OS",
+  <http://localhost:3005/d/saga-da-os>). O Grafana lê os arquivos na subida: depois de mudar um JSON, rode
+  `docker compose restart lgtm`.
 - **Dados:** volume `lgtm-data` (`/data`). O `docker compose down -v` também apaga traces e métricas.
 
 ## Resetar
