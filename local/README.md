@@ -38,6 +38,7 @@ O que sobe:
 | `billing` | 3004 | `/api/billing`, com `PAYMENT_PROVIDER=fake` |
 | `postgres` | 5440 | bancos e usuários `catalog`, `billing` e `os` (senha igual ao nome) |
 | `localstack` | 4566 | SQS, SNS e DynamoDB, criados por `localstack/init.sh` |
+| `lgtm` | 3000 | Grafana do `grafana/otel-lgtm` (Tempo, Prometheus, Loki). OTLP 4317/4318 só na rede interna. Ver [Observabilidade local](#observabilidade-local) |
 | `migrate-*` | — | execução única: `migrate-catalog` e `migrate-billing` no estágio `builder`; `migrate-os` na imagem final, como o initContainer do EKS (seed compilado) |
 
 - **`NODE_ENV=production` nos serviços:** com `development`, o logger usa o transport `pino-pretty`. Ele é
@@ -139,6 +140,29 @@ curtas para os cenários (a) a (d). Comportamentos assíncronos que o roteiro co
   (troque `os` pelos outros serviços).
 
 No Git Bash, use `exec -T` se o terminal reclamar de TTY.
+
+## Observabilidade local
+
+O serviço `lgtm` (`grafana/otel-lgtm`) junta coletor OpenTelemetry, Tempo, Prometheus, Loki e Grafana. Os 4
+serviços exportam traces e métricas via OTLP/HTTP para `http://lgtm:4318` (`OTEL_EXPORTER_OTLP_ENDPOINT` no bloco
+`x-aws`); sem essa variável o SDK nem inicia.
+
+- **URL:** <http://localhost:3000>. Usuário padrão da imagem `admin`/`admin`; o acesso anônimo já entra como Admin.
+  Se a 3000 estiver ocupada, suba com `GRAFANA_PORT=3005 docker compose up -d --wait` (só muda a porta do host).
+- **Traces:** Explore → Tempo → TraceQL `{ resource.service.name = "tc-fase4-os" }` (ou `tc-fase4-catalog`,
+  `tc-fase4-billing`, `tc-fase4-execution`). Por enquanto cada serviço tem traces próprios: o contexto ainda não
+  atravessa as mensagens SNS/SQS.
+- **Métricas:** Explore → Prometheus. As HTTP da auto-instrumentação são
+  `http_server_request_duration_seconds_{bucket,count,sum}`, com `job`/`service_name` = nome do serviço,
+  `http_route`, `http_request_method` e `http_response_status_code`. Exemplo de p95:
+  `histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))`.
+- **Intervalo das métricas:** chegam a cada 60 s. O `OTEL_METRIC_EXPORT_INTERVAL` do compose ainda não tem
+  efeito, porque o `src/tracing.ts` cria o `PeriodicExportingMetricReader` sem ler a variável.
+- **Dashboards:** a imagem já traz "RED Metrics" e "JVM". Os da oficina ficam na pasta **Oficina**, provisionados
+  por `grafana/dashboards.yaml` a partir dos `*.json` montados de `grafana/dashboards/` (vazia por enquanto; vai
+  apontar para `../../tc-fase4-infra/observability/`). O Grafana lê os arquivos na subida: depois de mudar um JSON,
+  rode `docker compose restart lgtm`.
+- **Dados:** volume `lgtm-data` (`/data`). O `docker compose down -v` também apaga traces e métricas.
 
 ## Resetar
 
