@@ -212,6 +212,24 @@ describe('repositórios Prisma', () => {
     expect(await sagas.buscar('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
+  it('saga: grava etapaDesde e o devolve sem mudança quando a etapa não muda', async () => {
+    const os = await novaOs();
+    await ordens.salvar(os);
+    const nova = SagaInstance.iniciar(os.id.toValue());
+    await sagas.salvar(nova);
+    const criada = (await sagas.buscar(os.id.toValue()))!;
+    expect(criada.etapaDesde).toEqual(nova.etapaDesde);
+
+    await sagas.salvar(criada); // regrava na mesma etapa
+    const regravada = (await sagas.buscar(os.id.toValue()))!;
+    expect(regravada.versao).toBe(criada.versao + 1);
+    expect(regravada.etapaDesde).toEqual(nova.etapaDesde);
+
+    regravada.avancar(EtapaSaga.ORCAMENTO);
+    await sagas.salvar(regravada);
+    expect((await sagas.buscar(os.id.toValue()))!.etapaDesde).toEqual(regravada.etapaDesde);
+  });
+
   it('cadastros: usuário, cliente por documento e veículos por placa', async () => {
     const usuarios = new PrismaUsuarioRepository(tm);
     await usuarios.salvar(Usuario.criar({ nome: 'Ana', email: 'ana@oficina.local', senha: 'hash', perfil: PerfilAcesso.MECANICO }));

@@ -17,6 +17,7 @@ import { ITransactionManager } from '../ports/transaction-manager';
 import { ITravaPorOs } from '../ports/trava-por-os';
 import { ComandoSaga, comandos, enviarComandos } from './comandos-saga';
 import { motivoParaCliente, motivoTecnico } from './motivo-compensacao';
+import { ISagaMetricas } from './saga-metricas';
 import { CobrancaGeradaLida, FalhaLida, OrcamentoEnviadoLido } from './saga-messages';
 
 export interface ContextoEvento extends ContextoMensagem {
@@ -27,6 +28,16 @@ export interface ContextoEvento extends ContextoMensagem {
 interface EstadoDaSaga {
   os: OrdemDeServico;
   saga: SagaInstance;
+}
+
+/** Mudança de etapa gravada pela transação; vira métrica depois do commit. */
+interface MudancaDeEtapa {
+  de: EtapaSaga;
+  para: EtapaSaga;
+  /** Entrada na etapa `de`. */
+  desde: Date;
+  /** Código da falha, só quando a transação iniciou a compensação. */
+  compensacao?: string;
 }
 
 /** Evento fora da etapa esperada: nada é gravado além do registro de idempotência (E7). */
@@ -62,6 +73,7 @@ export class OrquestradorSaga {
     @Inject(INJECTION_TOKENS.CLIENTE_REPOSITORY) private readonly clientes: IClienteRepository,
     @Inject(INJECTION_TOKENS.OUTBOX) private readonly outbox: IOutbox,
     @Inject(INJECTION_TOKENS.DESTINOS_COMANDOS) private readonly destinos: DestinosComandos,
+    @Inject(INJECTION_TOKENS.SAGA_METRICAS) private readonly metricas: ISagaMetricas,
   ) {}
 
   // ── Diagnóstico (Execution) ─────────────────────────────────────────────
@@ -249,11 +261,12 @@ export class OrquestradorSaga {
     ctx: ContextoEvento,
     decidir: (estado: EstadoDaSaga) => Decisao | Promise<Decisao>,
   ): Promise<void> {
-    await this.transacao.run(async () => {
+    const mudanca = await this.transacao.run(async (): Promise<MudancaDeEtapa | undefined> => {
       if (!(await this.mensagensProcessadas.registrar(ctx.messageId))) return;
       await this.trava.travar(ctx.correlationId);
       const os = ensureFound(await this.ordens.buscarPorId(ctx.correlationId), 'Ordem de serviço');
       const saga = ensureFound(await this.sagas.buscar(ctx.correlationId), 'Saga da ordem de serviço');
+      const antes = { etapa: saga.etapa, desde: saga.etapaDesde, codigo: saga.codigoCompensacao };
 
       const decisao = await decidir({ os, saga });
       if (decisao === SEM_MUDANCA) return;
@@ -271,7 +284,23 @@ export class OrquestradorSaga {
       await this.ordens.salvar(os);
       await this.sagas.salvar(saga);
       await enviarComandos(this.outbox, this.destinos, ctx.correlationId, decisao, ctx.messageId);
+      if (saga.etapa === antes.etapa) return;
+      const codigo = saga.codigoCompensacao;
+      return {
+        de: antes.etapa,
+        para: saga.etapa,
+        desde: antes.desde,
+        compensacao: antes.codigo === null && codigo !== null ? codigo : undefined,
+      };
     });
+    // Fora da transação: processamento desfeito não chega aqui.
+    if (mudanca) this.registrarMetricas(mudanca);
+  }
+
+  private registrarMetricas({ de, para, desde, compensacao }: MudancaDeEtapa): void {
+    this.metricas.etapaConcluida(de, Math.max(0, (Date.now() - desde.getTime()) / 1000));
+    if (compensacao) this.metricas.compensada(compensacao);
+    if (para === EtapaSaga.CONCLUIDA) this.metricas.concluida();
   }
 }
 

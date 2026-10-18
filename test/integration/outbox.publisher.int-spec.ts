@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { propagation } from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
 
 import { criarEnvelope, MessageEnvelope } from '../../src/application/ports/message-envelope';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
@@ -143,6 +146,36 @@ describe('OutboxPublisher (integração)', () => {
 
     expect(await publisher.publicarPendentes()).toBe(2);
     expect(enviados.map((e) => e.traceparent)).toEqual([traceparent, null]);
+  });
+
+  describe('trace', () => {
+    const TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
+
+    beforeAll(() => {
+      context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+      propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+      trace.setGlobalTracerProvider(new BasicTracerProvider());
+    });
+    afterAll(() => {
+      trace.disable();
+      propagation.disable();
+      context.disable();
+    });
+
+    it('envia dentro de um span no trace de quem gravou a mensagem', async () => {
+      const envelope = await registrar('t.a', 'os-1');
+      await prisma.outbox.update({
+        where: { messageId: envelope.messageId },
+        data: { traceparent: `00-${TRACE_ID}-b7ad6b7169203331-01` },
+      });
+      let traceIdNoEnvio: string | undefined;
+      enviar.mockImplementationOnce(async () => {
+        traceIdNoEnvio = trace.getActiveSpan()?.spanContext().traceId;
+      });
+
+      expect(await publisher.publicarPendentes()).toBe(1);
+      expect(traceIdNoEnvio).toBe(TRACE_ID);
+    });
   });
 
   describe('sem inanição: OS com falha não ocupa o lote das demais', () => {

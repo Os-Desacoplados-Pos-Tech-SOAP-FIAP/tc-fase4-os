@@ -90,6 +90,7 @@ jobs:
             echo "CATALOG_COMMANDS_QUEUE_URL=$(out catalog_commands_queue_url)"
             echo "EXECUTION_COMMANDS_QUEUE_URL=$(out execution_commands_queue_url)"
             echo "BILLING_COMMANDS_QUEUE_URL=$(out billing_commands_queue_url)"
+            echo "DLQ_QUEUE_URL=$(out dlq_url)"
             echo "IRSA_ROLE_ARN=$(out irsa_role_arn)"
             echo "ALB_SG_ID=$(out alb_security_group_id)"
             echo "DATABASE_URL_SECRET=$(out database_url_secret_name)"
@@ -156,6 +157,7 @@ jobs:
             --from-literal=CATALOG_COMMANDS_QUEUE_URL="$CATALOG_COMMANDS_QUEUE_URL"
             --from-literal=EXECUTION_COMMANDS_QUEUE_URL="$EXECUTION_COMMANDS_QUEUE_URL"
             --from-literal=BILLING_COMMANDS_QUEUE_URL="$BILLING_COMMANDS_QUEUE_URL"
+            --from-literal=DLQ_QUEUE_URL="$DLQ_QUEUE_URL"
             --from-literal=CATALOG_BASE_URL="$CATALOG_BASE_URL"
             --from-literal=CATALOG_TIMEOUT_MS=3000
             --from-literal=JWT_EXPIRES_IN=8h

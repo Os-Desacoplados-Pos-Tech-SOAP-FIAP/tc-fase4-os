@@ -8,12 +8,14 @@ describe('lerMessagingConfig', () => {
         AWS_REGION: 'sa-east-1',
         AWS_ENDPOINT_URL: 'http://localhost:4566',
         INBOX_QUEUE_URL: 'url-fila',
+        DLQ_QUEUE_URL: 'url-dlq',
       }),
     ).toEqual({
       enabled: true,
       region: 'sa-east-1',
       endpoint: 'http://localhost:4566',
       inboxQueueUrl: 'url-fila',
+      dlqQueueUrl: 'url-dlq',
     });
   });
 

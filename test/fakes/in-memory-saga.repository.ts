@@ -36,5 +36,6 @@ function copiar(saga: SagaInstance, versao: number): SagaInstance {
     codigoCompensacao: saga.codigoCompensacao,
     motivoCompensacao: saga.motivoCompensacao,
     versao,
+    etapaDesde: saga.etapaDesde,
   });
 }

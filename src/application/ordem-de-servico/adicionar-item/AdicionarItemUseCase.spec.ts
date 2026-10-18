@@ -17,7 +17,7 @@ describe('AdicionarItemUseCase', () => {
 
   async function abrirEmDiagnostico(): Promise<string> {
     const { cliente, veiculo } = await c.clienteComVeiculo();
-    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS);
+    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS, c.metricas);
     const { os } = await abrir.execute({ clienteId: cliente.id.toValue(), veiculoId: veiculo.id.toValue() });
     const salva = (await c.ordens.buscarPorId(os.id.toValue()))!;
     salva.iniciarDiagnostico();
@@ -87,7 +87,7 @@ describe('AdicionarItemUseCase', () => {
 
   it('recusa item com a OS ainda RECEBIDA (diagnóstico não começou)', async () => {
     const { cliente, veiculo } = await c.clienteComVeiculoDe('111.444.777-35', 'XYZ9A87');
-    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS);
+    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS, c.metricas);
     const { os } = await abrir.execute({ clienteId: cliente.id.toValue(), veiculoId: veiculo.id.toValue() });
     await expect(
       useCase.execute({ osId: os.id.toValue(), tipo: TipoItemOrcamento.SERVICO, referenciaId: SERVICO_REVISAO, quantidade: 1, autorizacao: TOKEN }),

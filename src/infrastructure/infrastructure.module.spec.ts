@@ -18,10 +18,10 @@ describe('InfrastructureModule', () => {
   const compilar = () =>
     Test.createTestingModule({ imports: [ConfigFalsoModule, InfrastructureModule] }).compile();
 
-  it('liga os 12 tokens de injeção', async () => {
+  it('liga os 13 tokens de injeção', async () => {
     const modulo = await compilar();
     const tokens = Object.values(INJECTION_TOKENS);
-    expect(tokens).toHaveLength(12);
+    expect(tokens).toHaveLength(13);
     expect(tokens.map((token) => modulo.get(token))).not.toContain(undefined);
   });
 

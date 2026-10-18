@@ -155,6 +155,8 @@ model HistoricoStatus {
 model SagaInstance {
   osId              String    @id
   etapa             EtapaSaga
+  /// Entrada na etapa atual: só muda quando a etapa muda (duração por etapa nas métricas).
+  etapaDesde        DateTime
   codigoCompensacao String?
   motivoCompensacao String?
   versao            Int

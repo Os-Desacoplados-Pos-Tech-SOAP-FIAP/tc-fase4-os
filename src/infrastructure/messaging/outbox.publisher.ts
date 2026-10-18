@@ -10,6 +10,7 @@ import { performance } from 'node:perf_hooks';
 
 import { MessageEnvelope } from '../../application/ports/message-envelope';
 import { PrismaService } from '../database/prisma.service';
+import { publicarNoContexto } from '../telemetry/contexto-mensagem';
 import { erroParaLog } from './erro-para-log';
 import { MESSAGING_CONFIG, MessagingConfig } from './messaging.config';
 import { SnsSqsTransport } from './sns-sqs.transport';
@@ -144,7 +145,11 @@ export class OutboxPublisher implements OnApplicationBootstrap, BeforeApplicatio
     for (const pendente of pendentes) {
       if (performance.now() - inicio > PRAZO_NOVOS_ENVIOS_MS) break;
       try {
-        await this.transporte.enviar(pendente.destination, pendente.body, pendente.traceparent);
+        await publicarNoContexto(
+          pendente.traceparent,
+          { type: pendente.type, messageId: pendente.body.messageId, osId: pendente.groupId },
+          () => this.transporte.enviar(pendente.destination, pendente.body, pendente.traceparent),
+        );
         enviados.push(pendente.id);
       } catch (erro) {
         gruposComFalha.add(pendente.groupId);

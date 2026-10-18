@@ -14,6 +14,7 @@ import { DestinosComandos } from '../../ports/destinos-comandos';
 import { IOutbox } from '../../ports/outbox';
 import { ITransactionManager } from '../../ports/transaction-manager';
 import { comandos, enviarComandos } from '../../saga/comandos-saga';
+import { ISagaMetricas } from '../../saga/saga-metricas';
 
 export interface AbrirOrdemDeServicoInput {
   clienteId: string;
@@ -37,6 +38,7 @@ export class AbrirOrdemDeServicoUseCase {
     @Inject(INJECTION_TOKENS.VEICULO_REPOSITORY) private readonly veiculos: IVeiculoRepository,
     @Inject(INJECTION_TOKENS.OUTBOX) private readonly outbox: IOutbox,
     @Inject(INJECTION_TOKENS.DESTINOS_COMANDOS) private readonly destinos: DestinosComandos,
+    @Inject(INJECTION_TOKENS.SAGA_METRICAS) private readonly metricas: ISagaMetricas,
   ) {}
 
   async execute(input: AbrirOrdemDeServicoInput): Promise<OrdemComSaga> {
@@ -46,7 +48,7 @@ export class AbrirOrdemDeServicoUseCase {
       throw new DomainError('Veículo informado não pertence ao cliente', 'VEICULO_NAO_PERTENCE_AO_CLIENTE');
     }
 
-    return this.transacao.run(async () => {
+    const aberta = await this.transacao.run(async () => {
       const os = OrdemDeServico.abrir({ ...input, numero: await this.ordens.proximoNumero() });
       const saga = SagaInstance.iniciar(os.id.toValue());
       await this.ordens.salvar(os);
@@ -54,5 +56,7 @@ export class AbrirOrdemDeServicoUseCase {
       await enviarComandos(this.outbox, this.destinos, os.id.toValue(), [comandos.enfileirarDiagnostico(os)]);
       return { os, saga };
     });
+    this.metricas.iniciada(); // depois do commit
+    return aberta;
   }
 }
