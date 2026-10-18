@@ -13,13 +13,12 @@ export class InMemorySagaRepository implements ISagaRepository, ParticipanteTran
     } else if (atual?.versao !== saga.versao) {
       throw new ConcorrenciaError('Saga');
     }
-    // Como o @updatedAt do Prisma: toda gravação renova o instante.
-    this.sagas.set(saga.osId, copiar(saga, saga.versao + 1, new Date()));
+    this.sagas.set(saga.osId, copiar(saga, saga.versao + 1));
   }
 
   async buscar(osId: string): Promise<SagaInstance | null> {
     const saga = this.sagas.get(osId);
-    return saga ? copiar(saga, saga.versao, saga.atualizadoEm) : null;
+    return saga ? copiar(saga, saga.versao) : null;
   }
 
   snapshot(): unknown {
@@ -30,13 +29,13 @@ export class InMemorySagaRepository implements ISagaRepository, ParticipanteTran
   }
 }
 
-function copiar(saga: SagaInstance, versao: number, atualizadoEm: Date | undefined): SagaInstance {
+function copiar(saga: SagaInstance, versao: number): SagaInstance {
   return SagaInstance.restaurar({
     osId: saga.osId,
     etapa: saga.etapa,
     codigoCompensacao: saga.codigoCompensacao,
     motivoCompensacao: saga.motivoCompensacao,
     versao,
-    atualizadoEm,
+    etapaDesde: saga.etapaDesde,
   });
 }

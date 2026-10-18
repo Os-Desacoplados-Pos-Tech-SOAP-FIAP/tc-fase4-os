@@ -15,6 +15,7 @@ export class PrismaSagaRepository implements ISagaRepository {
       etapa: EtapaSagaRow[saga.etapa],
       codigoCompensacao: saga.codigoCompensacao,
       motivoCompensacao: saga.motivoCompensacao,
+      etapaDesde: saga.etapaDesde,
     };
     if (saga.versao === 0) {
       await this.db.client.sagaInstance.create({ data: { osId: saga.osId, versao: 1, ...dados } });
@@ -36,7 +37,7 @@ export class PrismaSagaRepository implements ISagaRepository {
           codigoCompensacao: row.codigoCompensacao,
           motivoCompensacao: row.motivoCompensacao,
           versao: row.versao,
-          atualizadoEm: row.atualizadoEm,
+          etapaDesde: row.etapaDesde,
         })
       : null;
   }

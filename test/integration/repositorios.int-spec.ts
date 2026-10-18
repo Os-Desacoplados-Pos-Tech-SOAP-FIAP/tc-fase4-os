@@ -212,17 +212,22 @@ describe('repositórios Prisma', () => {
     expect(await sagas.buscar('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
-  it('saga: devolve o instante da última gravação (atualizadoEm), que avança a cada salvar', async () => {
+  it('saga: grava etapaDesde e o devolve sem mudança quando a etapa não muda', async () => {
     const os = await novaOs();
     await ordens.salvar(os);
-    await sagas.salvar(SagaInstance.iniciar(os.id.toValue()));
+    const nova = SagaInstance.iniciar(os.id.toValue());
+    await sagas.salvar(nova);
     const criada = (await sagas.buscar(os.id.toValue()))!;
-    expect(criada.atualizadoEm).toBeInstanceOf(Date);
+    expect(criada.etapaDesde).toEqual(nova.etapaDesde);
 
-    criada.avancar(EtapaSaga.ORCAMENTO);
-    await sagas.salvar(criada);
-    const avancada = (await sagas.buscar(os.id.toValue()))!;
-    expect(avancada.atualizadoEm!.getTime()).toBeGreaterThan(criada.atualizadoEm!.getTime());
+    await sagas.salvar(criada); // regrava na mesma etapa
+    const regravada = (await sagas.buscar(os.id.toValue()))!;
+    expect(regravada.versao).toBe(criada.versao + 1);
+    expect(regravada.etapaDesde).toEqual(nova.etapaDesde);
+
+    regravada.avancar(EtapaSaga.ORCAMENTO);
+    await sagas.salvar(regravada);
+    expect((await sagas.buscar(os.id.toValue()))!.etapaDesde).toEqual(regravada.etapaDesde);
   });
 
   it('cadastros: usuário, cliente por documento e veículos por placa', async () => {

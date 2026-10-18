@@ -50,8 +50,8 @@ export interface SagaInstanceProps {
   motivoCompensacao: string | null;
   /** Versão lida do banco (0 = ainda não persistida). */
   versao: number;
-  /** Instante da última gravação, lido do banco (ausente antes de persistir). */
-  atualizadoEm?: Date;
+  /** Entrada na etapa atual (só muda quando a etapa muda). */
+  etapaDesde: Date;
 }
 
 /** Estado do orquestrador de uma OS (id = osId). Só guarda a etapa; quem decide é o orquestrador. */
@@ -59,7 +59,7 @@ export class SagaInstance {
   private constructor(private readonly props: SagaInstanceProps) {}
 
   public static iniciar(osId: string): SagaInstance {
-    return new SagaInstance({ osId: new UniqueID(osId).toValue(), etapa: EtapaSaga.DIAGNOSTICO, codigoCompensacao: null, motivoCompensacao: null, versao: 0 });
+    return new SagaInstance({ osId: new UniqueID(osId).toValue(), etapa: EtapaSaga.DIAGNOSTICO, codigoCompensacao: null, motivoCompensacao: null, versao: 0, etapaDesde: new Date() });
   }
 
   public static restaurar(props: SagaInstanceProps): SagaInstance {
@@ -81,8 +81,8 @@ export class SagaInstance {
   public get versao(): number {
     return this.props.versao;
   }
-  public get atualizadoEm(): Date | undefined {
-    return this.props.atualizadoEm;
+  public get etapaDesde(): Date {
+    return this.props.etapaDesde;
   }
   public get terminada(): boolean {
     return TRANSICOES[this.props.etapa].length === 0;
@@ -104,7 +104,7 @@ export class SagaInstance {
         'SAGA_COMPENSACAO_SEM_MOTIVO',
       );
     }
-    this.props.etapa = para;
+    this.entrar(para);
   }
 
   /** Entra numa etapa de compensação guardando o código da falha e o motivo técnico. */
@@ -113,9 +113,14 @@ export class SagaInstance {
       throw new DomainError(`${para} não é etapa de compensação`, 'SAGA_COMPENSACAO_INVALIDA');
     }
     this.validarTransicao(para);
-    this.props.etapa = para;
+    this.entrar(para);
     this.props.codigoCompensacao = codigo;
     this.props.motivoCompensacao = motivo;
+  }
+
+  private entrar(etapa: EtapaSaga): void {
+    this.props.etapa = etapa;
+    this.props.etapaDesde = new Date();
   }
 
   private validarTransicao(para: EtapaSaga): void {

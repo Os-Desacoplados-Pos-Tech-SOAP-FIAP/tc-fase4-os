@@ -41,7 +41,7 @@ describe('OrquestradorSaga — métricas', () => {
     jest.useRealTimers();
   });
 
-  it('fluxo feliz: duração de cada etapa desde a última gravação da saga e uma conclusão', async () => {
+  it('fluxo feliz: duração de cada etapa desde a entrada nela e uma conclusão', async () => {
     await aprovada();
     await depois(5, () => orq.insumosReservados(contexto(osId)));
     await depois(6, () => orq.execucaoAceita(contexto(osId)));
@@ -50,19 +50,33 @@ describe('OrquestradorSaga — métricas', () => {
     await depois(9, () => orq.cobrancaGerada(contexto(osId), { initPoint: 'https://pagar/1' }));
     await depois(10, () => orq.pagamentoConfirmado(contexto(osId)));
 
-    // O instante de entrada é o atualizadoEm da saga: eventos que regravam a saga sem mudar
-    // de etapa (diagnóstico iniciado, orçamento enviado, reparo iniciado, cobrança gerada)
-    // reiniciam a contagem.
+    // Eventos que regravam a saga sem mudar de etapa (diagnóstico iniciado, orçamento enviado,
+    // reparo iniciado, cobrança gerada) não reiniciam a contagem.
     expect(c.metricas.etapas).toEqual([
-      { etapa: EtapaSaga.DIAGNOSTICO, segundos: 2 },
-      { etapa: EtapaSaga.ORCAMENTO, segundos: 4 },
+      { etapa: EtapaSaga.DIAGNOSTICO, segundos: 1 + 2 },
+      { etapa: EtapaSaga.ORCAMENTO, segundos: 3 + 4 },
       { etapa: EtapaSaga.RESERVA, segundos: 5 },
       { etapa: EtapaSaga.EXECUCAO_SOLICITADA, segundos: 6 },
-      { etapa: EtapaSaga.EXECUCAO, segundos: 8 },
-      { etapa: EtapaSaga.COBRANCA, segundos: 10 },
+      { etapa: EtapaSaga.EXECUCAO, segundos: 7 + 8 },
+      { etapa: EtapaSaga.COBRANCA, segundos: 9 + 10 },
     ]);
     expect(c.metricas.concluidas).toBe(1);
     expect(c.metricas.compensacoes).toEqual([]);
+  });
+
+  it('evento que não muda a etapa não reinicia etapaDesde; a transição mede desde a entrada', async () => {
+    await depois(1, () => orq.diagnosticoIniciado(contexto(osId)));
+    await incluirItens(c, osId, [SERVICO, INSUMO]);
+    await depois(2, () => orq.diagnosticoConcluido(contexto(osId))); // entra em ORCAMENTO
+    const entrada = (await c.sagas.buscar(osId))!.etapaDesde;
+
+    await depois(30, () => orq.orcamentoEnviado(contexto(osId), ENVIADO)); // regrava, mesma etapa
+    const depoisDoEnvio = (await c.sagas.buscar(osId))!;
+    expect(depoisDoEnvio.etapa).toBe(EtapaSaga.ORCAMENTO);
+    expect(depoisDoEnvio.etapaDesde).toEqual(entrada);
+
+    await depois(60, () => orq.orcamentoAprovado(contexto(osId)));
+    expect(c.metricas.etapas.at(-1)).toEqual({ etapa: EtapaSaga.ORCAMENTO, segundos: 90 });
   });
 
   it('falha na reserva conta uma compensação com o código da falha', async () => {

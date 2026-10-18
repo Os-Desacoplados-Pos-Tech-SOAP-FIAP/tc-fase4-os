@@ -34,8 +34,8 @@ interface EstadoDaSaga {
 interface MudancaDeEtapa {
   de: EtapaSaga;
   para: EtapaSaga;
-  /** Última gravação da saga antes desta transação (entrada na etapa `de`). */
-  desde?: Date;
+  /** Entrada na etapa `de`. */
+  desde: Date;
   /** Código da falha, só quando a transação iniciou a compensação. */
   compensacao?: string;
 }
@@ -266,7 +266,7 @@ export class OrquestradorSaga {
       await this.trava.travar(ctx.correlationId);
       const os = ensureFound(await this.ordens.buscarPorId(ctx.correlationId), 'Ordem de serviço');
       const saga = ensureFound(await this.sagas.buscar(ctx.correlationId), 'Saga da ordem de serviço');
-      const antes = { etapa: saga.etapa, desde: saga.atualizadoEm, codigo: saga.codigoCompensacao };
+      const antes = { etapa: saga.etapa, desde: saga.etapaDesde, codigo: saga.codigoCompensacao };
 
       const decisao = await decidir({ os, saga });
       if (decisao === SEM_MUDANCA) return;
@@ -298,7 +298,7 @@ export class OrquestradorSaga {
   }
 
   private registrarMetricas({ de, para, desde, compensacao }: MudancaDeEtapa): void {
-    if (desde) this.metricas.etapaConcluida(de, Math.max(0, (Date.now() - desde.getTime()) / 1000));
+    this.metricas.etapaConcluida(de, Math.max(0, (Date.now() - desde.getTime()) / 1000));
     if (compensacao) this.metricas.compensada(compensacao);
     if (para === EtapaSaga.CONCLUIDA) this.metricas.concluida();
   }

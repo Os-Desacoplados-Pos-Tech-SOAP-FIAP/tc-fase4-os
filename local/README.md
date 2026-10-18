@@ -160,8 +160,8 @@ serviços exportam traces e métricas via OTLP/HTTP para `http://lgtm:4318` (`OT
   `histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))`.
 - **Métricas da oficina:** nos 4 serviços, `mensagens_processadas_total{tipo,resultado}`, `outbox_pendentes` e
   `dlq_mensagens` (`DLQ_QUEUE_URL` de cada serviço no compose). No OS, as da saga: `saga_iniciadas_total`,
-  `saga_concluidas_total`, `saga_compensacoes_total{motivo}`, `saga_duracao_etapa_segundos{etapa}` (histograma;
-  a entrada na etapa é a última gravação da saga) e `os_por_status{status}`. Os gauges leem banco/SQS com cache
+  `saga_concluidas_total`, `saga_compensacoes_total{motivo}`, `saga_duracao_etapa_segundos{etapa}` (histograma desde o
+  `etapaDesde` da saga) e `os_por_status{status}`. Os gauges leem banco/SQS com cache
   de 30 s. Ex.: duração média por etapa
   `sum by (etapa) (rate(saga_duracao_etapa_segundos_sum[5m])) / sum by (etapa) (rate(saga_duracao_etapa_segundos_count[5m]))`.
 - **Intervalo das métricas:** 10 s (`OTEL_METRIC_EXPORT_INTERVAL` no bloco `x-aws`); só tem efeito nos serviços

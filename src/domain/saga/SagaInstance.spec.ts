@@ -1,6 +1,7 @@
 import { EtapaSaga, SagaInstance } from './SagaInstance';
 
 const OS_ID = '55555555-5555-4555-8555-555555555555';
+const ENTRADA = new Date('2026-10-17T12:00:00.000Z');
 
 describe('SagaInstance', () => {
   it('inicia no diagnóstico, versão 0, sem código nem motivo', () => {
@@ -62,7 +63,7 @@ describe('SagaInstance', () => {
     [EtapaSaga.EXECUCAO, EtapaSaga.COMPENSANDO_RESERVAS],
     [EtapaSaga.CONCLUIDA, EtapaSaga.DIAGNOSTICO],
   ])('recusa %s → %s', (de, para) => {
-    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1 });
+    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1, etapaDesde: ENTRADA });
     expect(() => saga.avancar(para)).toThrow(expect.objectContaining({ code: 'SAGA_TRANSICAO_INVALIDA' }));
   });
 
@@ -73,6 +74,7 @@ describe('SagaInstance', () => {
       codigoCompensacao: null,
       motivoCompensacao: null,
       versao: 2,
+      etapaDesde: ENTRADA,
     });
     expect(() => saga.compensar(EtapaSaga.EXECUCAO_SOLICITADA, 'X', 'x')).toThrow(
       expect.objectContaining({ code: 'SAGA_COMPENSACAO_INVALIDA' }),
@@ -87,7 +89,7 @@ describe('SagaInstance', () => {
     [EtapaSaga.RESERVA, EtapaSaga.COMPENSANDO_ORCAMENTO],
     [EtapaSaga.EXECUCAO_SOLICITADA, EtapaSaga.COMPENSANDO_RESERVAS],
   ])('avancar recusa entrar em compensação sem motivo (%s → %s)', (de, para) => {
-    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1 });
+    const saga = SagaInstance.restaurar({ osId: OS_ID, etapa: de, codigoCompensacao: null, motivoCompensacao: null, versao: 1, etapaDesde: ENTRADA });
     expect(() => saga.avancar(para)).toThrow(
       expect.objectContaining({ code: 'SAGA_COMPENSACAO_SEM_MOTIVO' }),
     );
@@ -101,6 +103,7 @@ describe('SagaInstance', () => {
       codigoCompensacao: 'CAPACIDADE_ESGOTADA',
       motivoCompensacao: 'Fila cheia',
       versao: 3,
+      etapaDesde: ENTRADA,
     });
     saga.avancar(EtapaSaga.COMPENSANDO_ORCAMENTO);
     expect(saga.etapa).toBe(EtapaSaga.COMPENSANDO_ORCAMENTO);
@@ -112,5 +115,33 @@ describe('SagaInstance', () => {
     const saga = SagaInstance.iniciar(OS_ID);
     expect(saga.em(EtapaSaga.ORCAMENTO, EtapaSaga.DIAGNOSTICO)).toBe(true);
     expect(saga.em(EtapaSaga.ORCAMENTO)).toBe(false);
+  });
+
+  describe('etapaDesde', () => {
+    beforeEach(() => jest.useFakeTimers({ now: ENTRADA }));
+    afterEach(() => jest.useRealTimers());
+
+    it('iniciar marca a entrada no diagnóstico', () => {
+      expect(SagaInstance.iniciar(OS_ID).etapaDesde).toEqual(ENTRADA);
+    });
+
+    it('avancar e compensar marcam a entrada na nova etapa', () => {
+      const saga = SagaInstance.iniciar(OS_ID);
+      jest.setSystemTime(ENTRADA.getTime() + 10_000);
+      saga.avancar(EtapaSaga.ORCAMENTO);
+      expect(saga.etapaDesde).toEqual(new Date(ENTRADA.getTime() + 10_000));
+
+      saga.avancar(EtapaSaga.RESERVA);
+      jest.setSystemTime(ENTRADA.getTime() + 25_000);
+      saga.compensar(EtapaSaga.COMPENSANDO_ORCAMENTO, 'ESTOQUE_INSUFICIENTE', 'Sem estoque');
+      expect(saga.etapaDesde).toEqual(new Date(ENTRADA.getTime() + 25_000));
+    });
+
+    it('transição recusada não mexe em etapaDesde', () => {
+      const saga = SagaInstance.iniciar(OS_ID);
+      jest.setSystemTime(ENTRADA.getTime() + 10_000);
+      expect(() => saga.avancar(EtapaSaga.RESERVA)).toThrow();
+      expect(saga.etapaDesde).toEqual(ENTRADA);
+    });
   });
 });

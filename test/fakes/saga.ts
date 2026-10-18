@@ -68,6 +68,7 @@ export async function forcarEtapa(c: Cenario, osId: string, etapa: EtapaSaga): P
       codigoCompensacao: atual.codigoCompensacao,
       motivoCompensacao: atual.motivoCompensacao,
       versao: atual.versao,
+      etapaDesde: new Date(),
     }),
   );
 }
