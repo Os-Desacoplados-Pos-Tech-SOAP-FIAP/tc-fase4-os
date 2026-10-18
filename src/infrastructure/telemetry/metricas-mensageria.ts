@@ -21,7 +21,7 @@ export type ResultadoMensagem = 'ok' | 'erro';
  * Sem SDK iniciado (testes, dev sem OTLP) o meter global é no-op. O meter é obtido no
  * construtor: o provider de métricas não tem proxy, então precisa já estar registrado.
  */
-const meter = (): Meter => metrics.getMeter(NOME_METER);
+export const meter = (): Meter => metrics.getMeter(NOME_METER);
 
 @Injectable()
 export class MetricasMensageria {
@@ -38,18 +38,18 @@ export class MetricasMensageria {
  * Valor lido sob demanda e reaproveitado por CACHE_MS. Falha não quebra a coleta: a
  * métrica fica sem ponto até a próxima tentativa e o aviso sai no máximo uma vez por minuto.
  */
-class LeituraEmCache {
+export class LeituraEmCache<T = number> {
   private readonly logger = new Logger('MetricasMensageria');
-  private valor?: number;
+  private valor?: T;
   private lidoEm = Number.NEGATIVE_INFINITY;
   private avisadoEm = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly metrica: string,
-    private readonly ler: () => Promise<number>,
+    private readonly ler: () => Promise<T>,
   ) {}
 
-  async atual(): Promise<number | undefined> {
+  async atual(): Promise<T | undefined> {
     const agora = Date.now();
     if (agora - this.lidoEm < CACHE_MS) return this.valor;
     this.lidoEm = agora;

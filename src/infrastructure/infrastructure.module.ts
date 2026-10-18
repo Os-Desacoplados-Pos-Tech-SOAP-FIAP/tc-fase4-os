@@ -17,6 +17,7 @@ import { PrismaSagaRepository } from './repositories/PrismaSagaRepository';
 import { PrismaTravaPorOs } from './repositories/PrismaTravaPorOs';
 import { PrismaUsuarioRepository } from './repositories/PrismaUsuarioRepository';
 import { PrismaVeiculoRepository } from './repositories/PrismaVeiculoRepository';
+import { GaugeOsPorStatus, MetricasSaga } from './telemetry/metricas-saga';
 
 const bindings = [
   { provide: INJECTION_TOKENS.USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
@@ -40,6 +41,7 @@ const bindings = [
     provide: INJECTION_TOKENS.DESTINOS_COMANDOS,
     useFactory: () => lerDestinosComandos(process.env),
   },
+  { provide: INJECTION_TOKENS.SAGA_METRICAS, useClass: MetricasSaga },
 ];
 
 @Global()
@@ -49,6 +51,7 @@ const bindings = [
     ...bindings,
     { provide: CONFIG_CATALOGO, useFactory: () => lerConfigCatalogo(process.env) },
     JwtStrategy,
+    GaugeOsPorStatus,
   ],
   exports: bindings.map((binding) => binding.provide),
 })

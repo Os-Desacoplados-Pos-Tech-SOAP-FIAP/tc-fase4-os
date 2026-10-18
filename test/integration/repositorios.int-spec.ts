@@ -212,6 +212,19 @@ describe('repositórios Prisma', () => {
     expect(await sagas.buscar('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
+  it('saga: devolve o instante da última gravação (atualizadoEm), que avança a cada salvar', async () => {
+    const os = await novaOs();
+    await ordens.salvar(os);
+    await sagas.salvar(SagaInstance.iniciar(os.id.toValue()));
+    const criada = (await sagas.buscar(os.id.toValue()))!;
+    expect(criada.atualizadoEm).toBeInstanceOf(Date);
+
+    criada.avancar(EtapaSaga.ORCAMENTO);
+    await sagas.salvar(criada);
+    const avancada = (await sagas.buscar(os.id.toValue()))!;
+    expect(avancada.atualizadoEm!.getTime()).toBeGreaterThan(criada.atualizadoEm!.getTime());
+  });
+
   it('cadastros: usuário, cliente por documento e veículos por placa', async () => {
     const usuarios = new PrismaUsuarioRepository(tm);
     await usuarios.salvar(Usuario.criar({ nome: 'Ana', email: 'ana@oficina.local', senha: 'hash', perfil: PerfilAcesso.MECANICO }));

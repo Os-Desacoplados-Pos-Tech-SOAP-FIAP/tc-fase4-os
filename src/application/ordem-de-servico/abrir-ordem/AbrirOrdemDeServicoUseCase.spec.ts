@@ -10,7 +10,7 @@ describe('AbrirOrdemDeServicoUseCase', () => {
 
   beforeEach(() => {
     c = criarCenario();
-    useCase = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS);
+    useCase = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS, c.metricas);
   });
 
   it('abre RECEBIDA, inicia a saga e pede o diagnóstico ao Execution na mesma transação', async () => {
@@ -55,5 +55,23 @@ describe('AbrirOrdemDeServicoUseCase', () => {
     await expect(
       useCase.execute({ clienteId: segundo.cliente.id.toValue(), veiculoId: veiculo.id.toValue() }),
     ).rejects.toEqual(expect.objectContaining({ code: 'VEICULO_NAO_PERTENCE_AO_CLIENTE' }));
+  });
+
+  it('conta a saga iniciada só depois do commit; falha na abertura não conta', async () => {
+    const { cliente, veiculo } = await c.clienteComVeiculo();
+    let emTransacao: boolean | undefined;
+    jest.spyOn(c.metricas, 'iniciada').mockImplementationOnce(() => {
+      emTransacao = c.transacao.ativa;
+      c.metricas.iniciadas++;
+    });
+    await useCase.execute({ clienteId: cliente.id.toValue(), veiculoId: veiculo.id.toValue() });
+    expect(c.metricas.iniciadas).toBe(1);
+    expect(emTransacao).toBe(false);
+
+    jest.spyOn(c.outbox, 'publicar').mockRejectedValueOnce(new Error('banco fora'));
+    await expect(
+      useCase.execute({ clienteId: cliente.id.toValue(), veiculoId: veiculo.id.toValue() }),
+    ).rejects.toThrow('banco fora');
+    expect(c.metricas.iniciadas).toBe(1);
   });
 });

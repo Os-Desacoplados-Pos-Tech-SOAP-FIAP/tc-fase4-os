@@ -2,6 +2,7 @@ import { DestinosComandos } from '../../src/application/ports/destinos-comandos'
 import { Cliente, TipoCliente } from '../../src/domain/cliente/entities/Cliente';
 import { Veiculo } from '../../src/domain/veiculo/entities/Veiculo';
 import { CatalogoEmMemoria } from './catalogo-em-memoria';
+import { FakeSagaMetricas } from './fake-saga-metricas';
 import { FakeTransactionManager } from './fake-transaction.manager';
 import { FakeTravaPorOs } from './fake-trava-por-os';
 import { InMemoryClienteRepository } from './in-memory-cliente.repository';
@@ -30,6 +31,7 @@ export function criarCenario() {
   const catalogo = new CatalogoEmMemoria();
   const transacao = new FakeTransactionManager().participar(ordens, sagas, processadas, outbox);
   const trava = new FakeTravaPorOs(transacao);
+  const metricas = new FakeSagaMetricas();
 
   async function clienteComVeiculoDe(
     documento: string,
@@ -65,6 +67,7 @@ export function criarCenario() {
     trava,
     catalogo,
     transacao,
+    metricas,
     clienteComVeiculo,
     clienteComVeiculoDe,
   };

@@ -50,6 +50,8 @@ export interface SagaInstanceProps {
   motivoCompensacao: string | null;
   /** Versão lida do banco (0 = ainda não persistida). */
   versao: number;
+  /** Instante da última gravação, lido do banco (ausente antes de persistir). */
+  atualizadoEm?: Date;
 }
 
 /** Estado do orquestrador de uma OS (id = osId). Só guarda a etapa; quem decide é o orquestrador. */
@@ -78,6 +80,9 @@ export class SagaInstance {
   }
   public get versao(): number {
     return this.props.versao;
+  }
+  public get atualizadoEm(): Date | undefined {
+    return this.props.atualizadoEm;
   }
   public get terminada(): boolean {
     return TRANSICOES[this.props.etapa].length === 0;

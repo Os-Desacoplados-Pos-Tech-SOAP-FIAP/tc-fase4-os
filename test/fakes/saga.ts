@@ -47,7 +47,7 @@ export async function incluirItens(c: Cenario, osId: string, itens: NovoItemOrca
 }
 
 export function criarOrquestrador(c: Cenario): OrquestradorSaga {
-  return new OrquestradorSaga(c.transacao, c.processadas, c.trava, c.ordens, c.sagas, c.clientes, c.outbox, DESTINOS);
+  return new OrquestradorSaga(c.transacao, c.processadas, c.trava, c.ordens, c.sagas, c.clientes, c.outbox, DESTINOS, c.metricas);
 }
 
 /** Versões gravadas da OS e da saga: iguais antes e depois = nada foi escrito. */

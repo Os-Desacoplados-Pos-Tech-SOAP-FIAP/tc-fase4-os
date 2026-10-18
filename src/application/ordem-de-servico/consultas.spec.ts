@@ -16,7 +16,7 @@ describe('consultas de OS', () => {
   beforeEach(async () => {
     c = criarCenario();
     const { cliente, veiculo } = await c.clienteComVeiculo();
-    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS);
+    const abrir = new AbrirOrdemDeServicoUseCase(c.transacao, c.ordens, c.sagas, c.clientes, c.veiculos, c.outbox, DESTINOS, c.metricas);
     osId = (await abrir.execute({ clienteId: cliente.id.toValue(), veiculoId: veiculo.id.toValue() })).os.id.toValue();
   });
 

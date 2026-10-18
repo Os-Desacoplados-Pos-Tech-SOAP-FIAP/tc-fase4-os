@@ -36,6 +36,7 @@ export class PrismaSagaRepository implements ISagaRepository {
           codigoCompensacao: row.codigoCompensacao,
           motivoCompensacao: row.motivoCompensacao,
           versao: row.versao,
+          atualizadoEm: row.atualizadoEm,
         })
       : null;
   }
