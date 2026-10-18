@@ -1,0 +1,12 @@
+# Provedor de dashboards da oficina, somado aos que a imagem grafana/otel-lgtm já provisiona.
+# Lê todo *.json montado em /otel-lgtm/dashboards/oficina (ver o volume do serviço lgtm).
+apiVersion: 1
+
+providers:
+  - name: oficina
+    folder: Oficina
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /otel-lgtm/dashboards/oficina
+      foldersFromFilesStructure: false

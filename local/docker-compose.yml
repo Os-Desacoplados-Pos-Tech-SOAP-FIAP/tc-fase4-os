@@ -1,4 +1,4 @@
-# Fluxo completo da saga em uma máquina: 4 serviços + Postgres + LocalStack.
+# Fluxo completo da saga em uma máquina: 4 serviços + Postgres + LocalStack + Grafana LGTM.
 # Pré-requisito: tc-fase4-catalog, tc-fase4-execution, tc-fase4-billing e tc-fase4-os clonados lado a lado.
 name: oficina-fase4
 
@@ -11,6 +11,9 @@ x-aws: &aws
   AWS_ENDPOINT_URL: http://localstack:4566
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
+  # Traces e métricas OTLP/HTTP para o grafana/otel-lgtm (Grafana em localhost:3000).
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+  OTEL_METRIC_EXPORT_INTERVAL: '10000'
 
 services:
   postgres:
@@ -40,6 +43,21 @@ services:
       test: ['CMD-SHELL', "curl -s localhost:4566/_localstack/init/ready | grep -q '\"completed\": *true'"]
       interval: 5s
       retries: 20
+
+  lgtm:
+    # Grafana + Tempo + Prometheus + Loki + coletor OTel numa imagem só. OTLP (4317/4318) fica só na rede interna.
+    image: grafana/otel-lgtm:0.37.0
+    # GRAFANA_PORT troca a porta do host se a 3000 estiver ocupada (ex.: um Next.js em dev).
+    ports: ['${GRAFANA_PORT:-3000}:3000']
+    volumes:
+      - lgtm-data:/data
+      - ./grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/oficina.yaml:ro
+      # Dashboards provisionados. A Task 5 troca a origem para ../../tc-fase4-infra/observability.
+      - ./grafana/dashboards:/otel-lgtm/dashboards/oficina:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'test -f /tmp/ready']
+      interval: 5s
+      retries: 30
 
   migrate-catalog:
     build: { context: ../../tc-fase4-catalog, dockerfile: docker/Dockerfile, target: builder }
@@ -83,6 +101,7 @@ services:
     depends_on:
       migrate-catalog: { condition: service_completed_successfully }
       localstack: { condition: service_healthy }
+      lgtm: { condition: service_started }
 
   execution:
     build: { context: ../../tc-fase4-execution, dockerfile: docker/Dockerfile }
@@ -98,6 +117,7 @@ services:
     ports: ['3003:3003']
     depends_on:
       localstack: { condition: service_healthy }
+      lgtm: { condition: service_started }
 
   billing:
     build: { context: ../../tc-fase4-billing, dockerfile: docker/Dockerfile }
@@ -114,6 +134,7 @@ services:
     depends_on:
       migrate-billing: { condition: service_completed_successfully }
       localstack: { condition: service_healthy }
+      lgtm: { condition: service_started }
 
   os:
     build: { context: .., dockerfile: docker/Dockerfile }
@@ -132,4 +153,8 @@ services:
     depends_on:
       migrate-os: { condition: service_completed_successfully }
       localstack: { condition: service_healthy }
+      lgtm: { condition: service_started }
       catalog: { condition: service_healthy }
+
+volumes:
+  lgtm-data:
