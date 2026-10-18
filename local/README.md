@@ -38,7 +38,7 @@ O que sobe:
 | `billing` | 3004 | `/api/billing`, com `PAYMENT_PROVIDER=fake` |
 | `postgres` | 5440 | bancos e usuários `catalog`, `billing` e `os` (senha igual ao nome) |
 | `localstack` | 4566 | SQS, SNS e DynamoDB, criados por `localstack/init.sh` |
-| `lgtm` | 3000 | Grafana do `grafana/otel-lgtm` (Tempo, Prometheus, Loki). OTLP 4317/4318 só na rede interna. Ver [Observabilidade local](#observabilidade-local) |
+| `lgtm` | 3005 | Grafana do `grafana/otel-lgtm` (Tempo, Prometheus, Loki). OTLP 4317/4318 só na rede interna. Ver [Observabilidade local](#observabilidade-local) |
 | `migrate-*` | — | execução única: `migrate-catalog` e `migrate-billing` no estágio `builder`; `migrate-os` na imagem final, como o initContainer do EKS (seed compilado) |
 
 - **`NODE_ENV=production` nos serviços:** com `development`, o logger usa o transport `pino-pretty`. Ele é
@@ -147,17 +147,25 @@ O serviço `lgtm` (`grafana/otel-lgtm`) junta coletor OpenTelemetry, Tempo, Prom
 serviços exportam traces e métricas via OTLP/HTTP para `http://lgtm:4318` (`OTEL_EXPORTER_OTLP_ENDPOINT` no bloco
 `x-aws`); sem essa variável o SDK nem inicia.
 
-- **URL:** <http://localhost:3000>. Usuário padrão da imagem `admin`/`admin`; o acesso anônimo já entra como Admin.
-  Se a 3000 estiver ocupada, suba com `GRAFANA_PORT=3005 docker compose up -d --wait` (só muda a porta do host).
+- **URL:** <http://localhost:3005> (a 3000 costuma estar ocupada em dev). Usuário padrão da imagem `admin`/`admin`;
+  o acesso anônimo já entra como Admin. Outra porta: `GRAFANA_PORT=<porta> docker compose up -d --wait`.
 - **Traces:** Explore → Tempo → TraceQL `{ resource.service.name = "tc-fase4-os" }` (ou `tc-fase4-catalog`,
-  `tc-fase4-billing`, `tc-fase4-execution`). Por enquanto cada serviço tem traces próprios: o contexto ainda não
-  atravessa as mensagens SNS/SQS.
+  `tc-fase4-billing`, `tc-fase4-execution`). O contexto atravessa as mensagens (`traceparent` nos atributos
+  SNS/SQS): cada ação HTTP abre um trace que segue pelos serviços, com spans `publish <type>` (PRODUCER) e
+  `process <type>` (CONSUMER). Todos os traces de uma OS: `{ span.oficina.os_id = "<osId>" }`. O trace só
+  atravessa um serviço que já tenha essa propagação (branch `feat/observabilidade` de cada repositório).
 - **Métricas:** Explore → Prometheus. As HTTP da auto-instrumentação são
   `http_server_request_duration_seconds_{bucket,count,sum}`, com `job`/`service_name` = nome do serviço,
   `http_route`, `http_request_method` e `http_response_status_code`. Exemplo de p95:
   `histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))`.
-- **Intervalo das métricas:** chegam a cada 60 s. O `OTEL_METRIC_EXPORT_INTERVAL` do compose ainda não tem
-  efeito, porque o `src/tracing.ts` cria o `PeriodicExportingMetricReader` sem ler a variável.
+- **Métricas da oficina:** nos 4 serviços, `mensagens_processadas_total{tipo,resultado}`, `outbox_pendentes` e
+  `dlq_mensagens` (`DLQ_QUEUE_URL` de cada serviço no compose). No OS, as da saga: `saga_iniciadas_total`,
+  `saga_concluidas_total`, `saga_compensacoes_total{motivo}`, `saga_duracao_etapa_segundos{etapa}` (histograma;
+  a entrada na etapa é a última gravação da saga) e `os_por_status{status}`. Os gauges leem banco/SQS com cache
+  de 30 s. Ex.: duração média por etapa
+  `sum by (etapa) (rate(saga_duracao_etapa_segundos_sum[5m])) / sum by (etapa) (rate(saga_duracao_etapa_segundos_count[5m]))`.
+- **Intervalo das métricas:** 10 s (`OTEL_METRIC_EXPORT_INTERVAL` no bloco `x-aws`); só tem efeito nos serviços
+  que já leem a variável no `src/tracing.ts` (sem isso, 60 s).
 - **Dashboards:** a imagem já traz "RED Metrics" e "JVM". Os da oficina ficam na pasta **Oficina**, provisionados
   por `grafana/dashboards.yaml` a partir dos `*.json` montados de `grafana/dashboards/` (vazia por enquanto; vai
   apontar para `../../tc-fase4-infra/observability/`). O Grafana lê os arquivos na subida: depois de mudar um JSON,

@@ -11,7 +11,7 @@ x-aws: &aws
   AWS_ENDPOINT_URL: http://localstack:4566
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
-  # Traces e métricas OTLP/HTTP para o grafana/otel-lgtm (Grafana em localhost:3000).
+  # Traces e métricas OTLP/HTTP para o grafana/otel-lgtm (Grafana em localhost:3005).
   OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
   OTEL_METRIC_EXPORT_INTERVAL: '10000'
 
@@ -47,8 +47,8 @@ services:
   lgtm:
     # Grafana + Tempo + Prometheus + Loki + coletor OTel numa imagem só. OTLP (4317/4318) fica só na rede interna.
     image: grafana/otel-lgtm:0.37.0
-    # GRAFANA_PORT troca a porta do host se a 3000 estiver ocupada (ex.: um Next.js em dev).
-    ports: ['${GRAFANA_PORT:-3000}:3000']
+    # Host na 3005 por padrão: a 3000 costuma estar ocupada em dev (ex.: Next.js). GRAFANA_PORT troca.
+    ports: ['${GRAFANA_PORT:-3005}:3000']
     volumes:
       - lgtm-data:/data
       - ./grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/oficina.yaml:ro
@@ -95,6 +95,8 @@ services:
       PORT: '3002'
       DATABASE_URL: postgresql://catalog:catalog@postgres:5432/catalog?schema=public
       INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-catalog-inbox.fifo
+      # Só para a métrica dlq_mensagens.
+      DLQ_QUEUE_URL: http://localstack:4566/000000000000/oficina-catalog-inbox-dlq.fifo
       EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-catalog-events.fifo
       OTEL_SERVICE_NAME: tc-fase4-catalog
     ports: ['3002:3002']
@@ -112,6 +114,8 @@ services:
       # Uma vaga só: permite provocar o cenário (c) "fila cheia" com duas OS.
       EXECUTION_MAX_CONCURRENT: '1'
       INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-execution-inbox.fifo
+      # Só para a métrica dlq_mensagens.
+      DLQ_QUEUE_URL: http://localstack:4566/000000000000/oficina-execution-inbox-dlq.fifo
       EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-execution-events.fifo
       OTEL_SERVICE_NAME: tc-fase4-execution
     ports: ['3003:3003']
@@ -126,6 +130,8 @@ services:
       PORT: '3004'
       DATABASE_URL: postgresql://billing:billing@postgres:5432/billing?schema=public
       INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-billing-inbox.fifo
+      # Só para a métrica dlq_mensagens.
+      DLQ_QUEUE_URL: http://localstack:4566/000000000000/oficina-billing-inbox-dlq.fifo
       EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:oficina-billing-events.fifo
       PUBLIC_BASE_URL: http://localhost:3004
       PAYMENT_PROVIDER: fake
@@ -145,6 +151,8 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?defina INTERNAL_SERVICE_TOKEN em local/.env}
       CATALOG_BASE_URL: http://catalog:3002/api/catalog
       INBOX_QUEUE_URL: http://localstack:4566/000000000000/oficina-os-inbox.fifo
+      # Só para a métrica dlq_mensagens.
+      DLQ_QUEUE_URL: http://localstack:4566/000000000000/oficina-os-inbox-dlq.fifo
       CATALOG_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-catalog-inbox.fifo
       BILLING_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-billing-inbox.fifo
       EXECUTION_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/oficina-execution-inbox.fifo
