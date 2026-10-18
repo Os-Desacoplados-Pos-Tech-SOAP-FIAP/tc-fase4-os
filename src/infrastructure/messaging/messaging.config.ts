@@ -6,6 +6,8 @@ export interface MessagingConfig {
   /** Só em dev (LocalStack). Na AWS fica indefinido. */
   endpoint?: string;
   inboxQueueUrl: string;
+  /** DLQ da fila de entrada, só para a métrica dlq_mensagens (opcional). */
+  dlqQueueUrl?: string;
 }
 
 export function lerMessagingConfig(env: NodeJS.ProcessEnv): MessagingConfig {
@@ -14,5 +16,6 @@ export function lerMessagingConfig(env: NodeJS.ProcessEnv): MessagingConfig {
     region: env.AWS_REGION ?? 'us-east-1',
     endpoint: env.AWS_ENDPOINT_URL || undefined,
     inboxQueueUrl: env.INBOX_QUEUE_URL ?? '',
+    dlqQueueUrl: env.DLQ_QUEUE_URL || undefined,
   };
 }

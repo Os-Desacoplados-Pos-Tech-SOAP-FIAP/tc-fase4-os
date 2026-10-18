@@ -3,6 +3,7 @@ import { SQSClient } from '@aws-sdk/client-sqs';
 import { Global, Module } from '@nestjs/common';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 
+import { GaugesMensageria, MetricasMensageria } from '../telemetry/metricas-mensageria';
 import { MessageHandlerRegistry } from './message-handler.registry';
 import { lerMessagingConfig, MESSAGING_CONFIG, MessagingConfig } from './messaging.config';
 import { OutboxPublisher } from './outbox.publisher';
@@ -50,6 +51,8 @@ const opcoesPublicacao = (config: MessagingConfig) => ({
     SnsSqsTransport,
     MessageHandlerRegistry,
     SqsInboxConsumer,
+    MetricasMensageria,
+    GaugesMensageria,
     OutboxPublisher,
   ],
   exports: [MESSAGING_CONFIG, MessageHandlerRegistry],
