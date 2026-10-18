@@ -51,6 +51,17 @@ describe('metricas-saga', () => {
     (await metrica(nome))?.dataPoints.map((p) => ({ attributes: p.attributes, value: p.value }));
 
   describe('MetricasSaga', () => {
+    it('nasce com os contadores em zero, para o increase() não perder o primeiro incremento', async () => {
+      new MetricasSaga();
+
+      expect(await pontos('saga_iniciadas_total')).toEqual([{ attributes: {}, value: 0 }]);
+      expect(await pontos('saga_concluidas_total')).toEqual([{ attributes: {}, value: 0 }]);
+      expect(await pontos('saga_compensacoes_total')).toEqual([
+        { attributes: { motivo: 'ESTOQUE_INSUFICIENTE' }, value: 0 },
+        { attributes: { motivo: 'CAPACIDADE_ESGOTADA' }, value: 0 },
+      ]);
+    });
+
     it('conta sagas iniciadas e concluídas', async () => {
       const metricas = new MetricasSaga();
       metricas.iniciada();

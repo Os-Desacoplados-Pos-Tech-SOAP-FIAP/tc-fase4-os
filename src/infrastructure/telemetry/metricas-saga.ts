@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import type { Counter, Histogram } from '@opentelemetry/api';
 
+import { CODIGOS_COMPENSACAO } from '../../application/saga/motivo-compensacao';
 import { ISagaMetricas } from '../../application/saga/saga-metricas';
 import { StatusOS } from '../../domain/ordem-de-servico/StatusOS';
 import { EtapaSaga } from '../../domain/saga/SagaInstance';
@@ -27,6 +28,16 @@ export class MetricasSaga implements ISagaMetricas {
     description: 'Tempo em cada etapa da saga, em segundos, medido na saída da etapa.',
     advice: { explicitBucketBoundaries: BUCKETS_DURACAO_ETAPA },
   });
+
+  /**
+   * O SDK só exporta um contador depois do primeiro `add`; sem o zero inicial, o increase()
+   * do Prometheus perde o primeiro incremento depois do boot.
+   */
+  constructor() {
+    this.iniciadas.add(0);
+    this.concluidas.add(0);
+    for (const motivo of CODIGOS_COMPENSACAO) this.compensacoes.add(0, { motivo });
+  }
 
   iniciada(): void {
     this.iniciadas.add(1);

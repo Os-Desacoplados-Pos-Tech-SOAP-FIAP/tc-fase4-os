@@ -9,6 +9,9 @@ const MOTIVOS_PARA_CLIENTE: Readonly<Record<string, string>> = {
   CAPACIDADE_ESGOTADA: 'A oficina está sem capacidade de execução no momento',
 };
 
+/** Códigos de compensação conhecidos (os que têm texto próprio para o cliente). */
+export const CODIGOS_COMPENSACAO: readonly string[] = Object.keys(MOTIVOS_PARA_CLIENTE);
+
 const MOTIVO_PADRAO_PARA_CLIENTE = 'Não foi possível seguir com o serviço';
 
 /** Código nulo (saga gravada antes da coluna) ou sem texto próprio → texto genérico. */
