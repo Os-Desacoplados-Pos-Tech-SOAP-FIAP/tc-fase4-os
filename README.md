@@ -316,6 +316,12 @@ Corpo padronizado com `statusCode`, `error`, `message` (e `code` nos erros de ne
 | Regra de negócio (`DomainError`, ex.: veículo de outro cliente, item fora do diagnóstico, entrega sem pagamento) | 422 |
 | Catalog fora do ar, com timeout ou resposta fora do contrato | 503 |
 
+## Decisões de arquitetura (ADRs)
+
+As decisões estruturais da Fase 4 (divisão dos serviços, saga com pivô, mensageria, outbox, bancos, contratos, infra,
+token e testes) estão registradas em [`docs/adr/`](docs/adr/README.md), com contexto, alternativas e consequências.
+As decisões de comportamento deste serviço ficam na seção abaixo.
+
 ## Decisões
 
 - **Sem tópico SNS próprio:** nenhum serviço consome eventos do OS. Ele só envia comandos, direto na fila de entrada
