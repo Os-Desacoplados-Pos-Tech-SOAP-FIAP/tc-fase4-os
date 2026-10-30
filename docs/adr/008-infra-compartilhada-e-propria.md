@@ -40,7 +40,7 @@ interno pelo IngressGroup (`k8s/base/ingress.yaml`). O CD de cada repositório f
 - o OS também lê os states de catalog, execution e billing (outputs `events_topic_arn`, `inbox_queue_arn`,
   `inbox_queue_url`) para assinar os tópicos e ganhar `SendMessage` nas filas (`terraform/remote-state.tf`).
 
-**Ordem de subida:** infra → catalog → execution → billing → os → CD dos serviços → auth → gateway. A descida é
+**Ordem de subida:** infra → catalog, billing e execution (independentes entre si) → os → CD dos serviços → auth → gateway. A descida é
 inversa, removendo os Ingress antes do Terraform dos serviços
 ([README da infra — Ordem de subida](https://github.com/Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-infra/blob/main/README.md#ordem-de-subida-descida--inversa)).
 
